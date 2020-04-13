@@ -50,23 +50,18 @@ def init():
     service = build('drive', 'v3', credentials=creds)
     return service
 
-def find_file(service, file_id):
-    print('Searching for file with ID: %s' % file_id)
-    page_token = None
-    while True:
-        response = service.files().list(
-                                      fields='nextPageToken, files(id, name)',
-                                      pageToken=page_token).execute()
-        for file_server in response.get('files', []):
-            # Process change
-            file_server_id = file_server.get('id')
-            if file_id == file_server_id:
-                print('Found file: %s (%s)' % (file_server.get('name'), file_server.get('id')))
-                return file_server
-        page_token = response.get('nextPageToken', None)
-        if page_token is None:
-            break
-    print('File id: %s not found' % file_id)
+def get_filename(service, file_id):
+    filename = 'gdrive-file'
+    try:
+        file_metadata = service.files().get(fileId=file_id, fields='name').execute()
+        filename = file_metadata['name']
+
+    except Exception as err:
+        print('An error happened while getting file name.')
+        print(err)
+
+    print('Filename is "%s" for ID: %s.' % (filename, file_id))
+    return filename
 
 def upload(service, filename):
     guessed_type = mimetypes.guess_type(filename, True)
@@ -95,17 +90,11 @@ def download(service, file_id):
         print('Please informe the ID of the file you want to download. Exiting..')
         return
 
-    found_file = find_file(service, file_id)
-    if found_file == None:
-        print('Could not find the file in your drive with ID: %s' % file_id)
-        return
-
-    filename = found_file['name']
-    print('Downloading file %s' % filename)
+    filename = get_filename(service, file_id)
 
     try:
         request = service.files().get_media(fileId=file_id)
-        # fh = io.BytesIO()
+
         fh = io.FileIO(filename, 'wb')
         downloader = MediaIoBaseDownload(fh, request)
         done = False
