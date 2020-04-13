@@ -78,8 +78,16 @@ def upload(service, filepath):
         media = MediaFileUpload(filepath, mimetype=mime_type, resumable=True)
         created_file = service.files().create(body=file_metadata,
                                         media_body=media,
-                                        fields='id').execute()
-        print('File ID: %s' % created_file.get('id'))
+                                        fields='id')
+        response = None
+        print("Uploading 0%", end='\r')
+        while response is None:
+            status, response = created_file.next_chunk()
+            if status:
+                print("Uploading %d%%" % int(status.progress() * 100),end='\r')
+
+        print("Uploading 100%")
+        print('File ID: %s' % response.get('id'))
     except Exception as err:
         print('An error occurred while uploading the file.')
         print(err)
@@ -98,9 +106,11 @@ def download(service, file_id):
         fh = io.FileIO(filename, 'wb')
         downloader = MediaIoBaseDownload(fh, request)
         done = False
+        print("Downloading 0%", end='\r')
         while done is False:
             status, done = downloader.next_chunk()
-            print("Download %d%%." % int(status.progress() * 100))
+            print("Downloading %d%%" % int(status.progress() * 100),end='\r')
+        print("Downloading 100%")
     except Exception as err:
         print('An error happened while downloading the file.')
         print(err)
