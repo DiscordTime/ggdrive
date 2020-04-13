@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-from __future__ import print_function
 import pickle
 import os.path
 from googleapiclient.discovery import build
@@ -51,6 +50,24 @@ def init():
     service = build('drive', 'v3', credentials=creds)
     return service
 
+def find_file(service, file_id):
+    print('Searching for file with ID: %s' % file_id)
+    page_token = None
+    while True:
+        response = service.files().list(
+                                      fields='nextPageToken, files(id, name)',
+                                      pageToken=page_token).execute()
+        for file_server in response.get('files', []):
+            # Process change
+            file_server_id = file_server.get('id')
+            if file_id == file_server_id:
+                print('Found file: %s (%s)' % (file_server.get('name'), file_server.get('id')))
+                return file_server
+        page_token = response.get('nextPageToken', None)
+        if page_token is None:
+            break
+    print('File id: %s not found' % file_id)
+
 def upload(service, filename):
     guessed_type = mimetypes.guess_type(filename, True)
     if guessed_type is None:
@@ -72,18 +89,24 @@ def upload(service, filename):
         print('An error occurred while uploading the file.')
         print(err)
 
-    
+
 def download(service, file_id):
     if file_id is None:
         print('Please informe the ID of the file you want to download. Exiting..')
         return
 
-    print('Downloading the file with ID: %s' % file_id)
+    found_file = find_file(service, file_id)
+    if found_file == None:
+        print('Could not find the file in your drive with ID: %s' % file_id)
+        return
+
+    filename = found_file['name']
+    print('Downloading file %s' % filename)
 
     try:
         request = service.files().get_media(fileId=file_id)
         # fh = io.BytesIO()
-        fh = io.FileIO('test', 'wb')
+        fh = io.FileIO(filename, 'wb')
         downloader = MediaIoBaseDownload(fh, request)
         done = False
         while done is False:
@@ -104,7 +127,7 @@ def main():
     if not func in functions:
         print('This function is not implemented yet.')
         return
-    
+
     service = init()
     if service is None:
         print('Failed to start service. Exiting..')
