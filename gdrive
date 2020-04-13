@@ -63,19 +63,19 @@ def get_filename(service, file_id):
     print('Filename is "%s" for ID: %s.' % (filename, file_id))
     return filename
 
-def upload(service, filename):
-    guessed_type = mimetypes.guess_type(filename, True)
+def upload(service, filepath):
+    guessed_type = mimetypes.guess_type(filepath, True)
     if guessed_type is None:
         print('Wasn`t able to guess mimetype.')
         return
     mime_type = guessed_type[0]
 
+    filename = filepath.split('/')[-1]
     print('Uploading the file: %s' % filename)
 
     try:
         file_metadata = {'name': filename}
-        media = MediaFileUpload(filename,
-                            mimetype=mime_type)
+        media = MediaFileUpload(filepath, mimetype=mime_type, resumable=True)
         created_file = service.files().create(body=file_metadata,
                                         media_body=media,
                                         fields='id').execute()
