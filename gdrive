@@ -12,6 +12,8 @@ import sys
 import mimetypes
 from os.path import expanduser
 
+CHUNK_SIZE = 1024 * 1024 # 1MB
+
 home = expanduser("~")
 gdrive_path = home + '/.gdrive/'
 credentials_path = gdrive_path + 'credentials.json'
@@ -63,6 +65,12 @@ def get_filename(service, file_id):
     print('Filename is "%s" for ID: %s.' % (filename, file_id))
     return filename
 
+def size_to_human_readable(num, suffix='B'):
+    for unit in ['','K','M','G','T']:
+        if abs(num) < 1024.0:
+            return "%3.1f%s%s" % (num, unit, suffix)
+        num /= 1024.0
+
 def upload(service, filepath):
     guessed_type = mimetypes.guess_type(filepath, True)
     if guessed_type is None:
@@ -75,7 +83,7 @@ def upload(service, filepath):
 
     try:
         file_metadata = {'name': filename}
-        media = MediaFileUpload(filepath, mimetype=mime_type, resumable=True)
+        media = MediaFileUpload(filepath, mimetype=mime_type, resumable=True, chunksize=CHUNK_SIZE)
         created_file = service.files().create(body=file_metadata,
                                         media_body=media,
                                         fields='id')
@@ -84,14 +92,15 @@ def upload(service, filepath):
         while response is None:
             status, response = created_file.next_chunk()
             if status:
-                print("Uploading %d%%" % int(status.progress() * 100),end='\r')
+                print("Uploading %d%% - %s/%s" % (int(status.progress() * 100),
+                                                    size_to_human_readable(status.resumable_progress),
+                                                    size_to_human_readable(status.total_size)), end='\r')
 
         print("Uploading 100%")
         print('File ID: %s' % response.get('id'))
     except Exception as err:
         print('An error occurred while uploading the file.')
         print(err)
-
 
 def download(service, file_id):
     if file_id is None:
@@ -104,12 +113,15 @@ def download(service, file_id):
         request = service.files().get_media(fileId=file_id)
 
         fh = io.FileIO(filename, 'wb')
-        downloader = MediaIoBaseDownload(fh, request)
+        downloader = MediaIoBaseDownload(fh, request, chunksize=CHUNK_SIZE)
         done = False
         print("Downloading 0%", end='\r')
         while done is False:
             status, done = downloader.next_chunk()
-            print("Downloading %d%%" % int(status.progress() * 100),end='\r')
+            print("Downloading %d%% - %s/%s" % (int(status.progress() * 100),
+                                                size_to_human_readable(status.resumable_progress),
+                                                size_to_human_readable(status.total_size)), end='\r')
+
         print("Downloading 100%")
     except Exception as err:
         print('An error happened while downloading the file.')
