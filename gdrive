@@ -14,16 +14,16 @@ from os.path import expanduser
 
 CHUNK_SIZE = 1024 * 1024 # 1MB
 
-home = expanduser("~")
-gdrive_path = home + '/.gdrive/'
-credentials_path = gdrive_path + 'credentials.json'
-token_path = gdrive_path + 'token.pickle'
+HOME = expanduser("~")
+GDRIVE_PATH = HOME + '/.gdrive/'
+CREDENTIALS_PATH = GDRIVE_PATH + 'credentials.json'
+TOKEN_PATH = GDRIVE_PATH + 'token.pickle'
 
 # If modifying these scopes, delete the file token.pickle.
 SCOPES = [
     'https://www.googleapis.com/auth/drive',
     'https://www.googleapis.com/auth/drive.metadata'
-  ]
+]
 
 functions = ['download', 'upload']
 
@@ -35,8 +35,8 @@ def init():
     # The file token.pickle stores the user's access and refresh tokens, and is
     # created automatically when the authorization flow completes for the first
     # time.
-    if os.path.exists(token_path):
-        with open(token_path, 'rb') as token:
+    if os.path.exists(TOKEN_PATH):
+        with open(TOKEN_PATH, 'rb') as token:
             creds = pickle.load(token)
     # If there are no (valid) credentials available, let the user log in.
     if not creds or not creds.valid:
@@ -44,10 +44,10 @@ def init():
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
-                credentials_path, SCOPES)
+                CREDENTIALS_PATH, SCOPES)
             creds = flow.run_local_server(port=0)
         # Save the credentials for the next run
-        with open(token_path, 'wb') as token:
+        with open(TOKEN_PATH, 'wb') as token:
             pickle.dump(creds, token)
     service = build('drive', 'v3', credentials=creds)
     return service
@@ -57,7 +57,6 @@ def get_filename(service, file_id):
     try:
         file_metadata = service.files().get(fileId=file_id, fields='name').execute()
         filename = file_metadata['name']
-
     except Exception as err:
         print('An error happened while getting file name.')
         print(err)
@@ -83,10 +82,15 @@ def upload(service, filepath):
 
     try:
         file_metadata = {'name': filename}
-        media = MediaFileUpload(filepath, mimetype=mime_type, resumable=True, chunksize=CHUNK_SIZE)
+
+        media = MediaFileUpload(filepath,
+                                mimetype=mime_type,
+                                resumable=True,
+                                chunksize=CHUNK_SIZE)
+
         created_file = service.files().create(body=file_metadata,
-                                        media_body=media,
-                                        fields='id')
+                                              media_body=media,
+                                              fields='id')
         response = None
         print("Uploading 0%", end='\r')
         while response is None:
@@ -95,7 +99,6 @@ def upload(service, filepath):
                 print("Uploading %d%% - %s/%s" % (int(status.progress() * 100),
                                                     size_to_human_readable(status.resumable_progress),
                                                     size_to_human_readable(status.total_size)), end='\r')
-
         print("Uploading 100%")
         print('File ID: %s' % response.get('id'))
     except Exception as err:
@@ -121,7 +124,6 @@ def download(service, file_id):
             print("Downloading %d%% - %s/%s" % (int(status.progress() * 100),
                                                 size_to_human_readable(status.resumable_progress),
                                                 size_to_human_readable(status.total_size)), end='\r')
-
         print("Downloading 100%")
     except Exception as err:
         print('An error happened while downloading the file.')
@@ -135,7 +137,7 @@ def main():
         return
 
     func = sys.argv[1]
-    if not func in functions:
+    if func not in functions:
         print('This function is not implemented yet.')
         return
 
