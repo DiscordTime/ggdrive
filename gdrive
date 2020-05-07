@@ -11,6 +11,8 @@ import io
 import sys
 import mimetypes
 from os.path import expanduser
+import threading
+import time
 
 CHUNK_SIZE = 1024 * 1024 # 1MB
 
@@ -87,24 +89,37 @@ def upload(service, filepath):
         created_file = service.files().create(body=file_metadata,
                                         media_body=media,
                                         fields='id')
+        upload_loop(created_file)
+    except Exception as err:
+        print('An error occurred while uploading the file.')
+        print(err)
+
+def upload_loop(created_file):
+    try:
+        start_time = time.time()
+        last_time = time.time()
+        last_size = 0.0
         response = None
         print("Uploading 0%", end='\r')
         while response is None:
             status, response = created_file.next_chunk()
             if status:
-                print("Uploading %d%% - %s/%s" % (int(status.progress() * 100),
-                                                    size_to_human_readable(status.resumable_progress),
-                                                    size_to_human_readable(status.total_size)), end='\r')
-
+                threading.Thread(target=log_progress,
+                                 args=("Uploading", status, start_time, last_size, last_time),
+                                 daemon=True).start()
+                last_size = status.resumable_progress
+                last_time = time.time() 
+        timer = time.strftime("%H:%M:%S", time.gmtime(time.time() - start_time))
+        print()
         print("Uploading 100%")
-        print('File ID: %s' % response.get('id'))
+        print('File ID: %s \n' % response.get('id'))
     except Exception as err:
         print('An error occurred while uploading the file.')
         print(err)
 
 def download(service, file_id):
     if file_id is None:
-        print('Please informe the ID of the file you want to download. Exiting..')
+        print('Please inform the ID of the file you want to download. Exiting..')
         return
 
     filename = get_filename(service, file_id)
@@ -114,18 +129,51 @@ def download(service, file_id):
 
         fh = io.FileIO(filename, 'wb')
         downloader = MediaIoBaseDownload(fh, request, chunksize=CHUNK_SIZE)
+        download_loop(downloader)
+    except Exception as err:
+        print('An error happened while downloading the file.')
+        print(err)
+
+def download_loop(downloader):
+    try:
+        start_time = time.time()
+        last_time = time.time()
+        last_size = 0.0
         done = False
         print("Downloading 0%", end='\r')
         while done is False:
             status, done = downloader.next_chunk()
-            print("Downloading %d%% - %s/%s" % (int(status.progress() * 100),
-                                                size_to_human_readable(status.resumable_progress),
-                                                size_to_human_readable(status.total_size)), end='\r')
-
-        print("Downloading 100%")
+            threading.Thread(target=log_progress,
+                             args=("Downloading", status, start_time, last_size, last_time),
+                             daemon=True).start()
+            last_size = status.resumable_progress
+            last_time = time.time() 
+        timer = time.strftime("%H:%M:%S", time.gmtime(time.time() - start_time))
+        print()
+        print("Downloading 100% - %s \n" % (timer))
     except Exception as err:
         print('An error happened while downloading the file.')
         print(err)
+
+def log_progress(service, status, start_time, previous_size, previous_time):
+    progress = int(status.progress() * 100)
+    total_size = size_to_human_readable(status.total_size)
+    current_size = status.resumable_progress
+    size = size_to_human_readable(current_size)
+
+    current_time = time.time()    
+    timer = time.strftime("%H:%M:%S", time.gmtime(current_time - start_time))
+
+    diff_size = current_size - previous_size
+    diff_time = current_time - previous_time
+    bps = diff_size / diff_time
+    speed = size_to_human_readable(bps)
+
+    estimated_time = (status.total_size - current_size) / bps
+    eta = time.strftime("%H:%M:%S", time.gmtime(estimated_time))
+        
+    print("%s %d%% - %s/%s - %s - %s/s - ETA: %s" % (service, progress, size, total_size, timer, speed, eta), end='\r')
+    return current_size, current_time
 
 def main():
     #print('Argument List:', str(sys.argv))
