@@ -96,9 +96,8 @@ def upload(service, filepath):
         while response is None:
             status, response = created_file.next_chunk()
             if status:
-                print("Uploading %d%% - %s/%s" % (int(status.progress() * 100),
-                                                    size_to_human_readable(status.resumable_progress),
-                                                    size_to_human_readable(status.total_size)), end='\r')
+                print("Uploading %d%% - %s/%s" % interpret_progress(status), end='\r')
+
         print("Uploading 100%")
         print('File ID: %s' % response.get('id'))
     except Exception as err:
@@ -121,13 +120,18 @@ def download(service, file_id):
         print("Downloading 0%", end='\r')
         while done is False:
             status, done = downloader.next_chunk()
-            print("Downloading %d%% - %s/%s" % (int(status.progress() * 100),
-                                                size_to_human_readable(status.resumable_progress),
-                                                size_to_human_readable(status.total_size)), end='\r')
+            print("Downloading %d%% - %s/%s" % interpret_progress(status), end='\r')
+
         print("Downloading 100%")
     except Exception as err:
         print('An error happened while downloading the file.')
         print(err)
+
+def interpret_progress(status):
+    progress = int(status.progress() * 100)
+    resumable_progress = size_to_human_readable(status.resumable_progress)
+    total_size = size_to_human_readable(status.total_size)
+    return progress, resumable_progress, total_size
 
 def main():
     #print('Argument List:', str(sys.argv))
