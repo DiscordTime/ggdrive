@@ -16,16 +16,16 @@ import time
 
 CHUNK_SIZE = 1024 * 1024 # 1MB
 
-home = expanduser("~")
-gdrive_path = home + '/.gdrive/'
-credentials_path = gdrive_path + 'credentials.json'
-token_path = gdrive_path + 'token.pickle'
+HOME = expanduser("~")
+GDRIVE_PATH = HOME + '/.gdrive/'
+CREDENTIALS_PATH = GDRIVE_PATH + 'credentials.json'
+TOKEN_PATH = GDRIVE_PATH + 'token.pickle'
 
 # If modifying these scopes, delete the file token.pickle.
 SCOPES = [
     'https://www.googleapis.com/auth/drive',
     'https://www.googleapis.com/auth/drive.metadata'
-  ]
+]
 
 functions = ['download', 'upload']
 
@@ -37,8 +37,8 @@ def init():
     # The file token.pickle stores the user's access and refresh tokens, and is
     # created automatically when the authorization flow completes for the first
     # time.
-    if os.path.exists(token_path):
-        with open(token_path, 'rb') as token:
+    if os.path.exists(TOKEN_PATH):
+        with open(TOKEN_PATH, 'rb') as token:
             creds = pickle.load(token)
     # If there are no (valid) credentials available, let the user log in.
     if not creds or not creds.valid:
@@ -46,10 +46,10 @@ def init():
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
-                credentials_path, SCOPES)
+                CREDENTIALS_PATH, SCOPES)
             creds = flow.run_local_server(port=0)
         # Save the credentials for the next run
-        with open(token_path, 'wb') as token:
+        with open(TOKEN_PATH, 'wb') as token:
             pickle.dump(creds, token)
     service = build('drive', 'v3', credentials=creds)
     return service
@@ -59,7 +59,6 @@ def get_filename(service, file_id):
     try:
         file_metadata = service.files().get(fileId=file_id, fields='name').execute()
         filename = file_metadata['name']
-
     except Exception as err:
         print('An error happened while getting file name.')
         print(err)
@@ -85,10 +84,15 @@ def upload(service, filepath):
 
     try:
         file_metadata = {'name': filename}
-        media = MediaFileUpload(filepath, mimetype=mime_type, resumable=True, chunksize=CHUNK_SIZE)
+
+        media = MediaFileUpload(filepath,
+                                mimetype=mime_type,
+                                resumable=True,
+                                chunksize=CHUNK_SIZE)
+
         created_file = service.files().create(body=file_metadata,
-                                        media_body=media,
-                                        fields='id')
+                                              media_body=media,
+                                              fields='id')
         upload_loop(created_file)
     except Exception as err:
         print('An error occurred while uploading the file.')
@@ -104,7 +108,7 @@ def upload_loop(created_file):
         while response is None:
             status, response = created_file.next_chunk()
             if status:
-                threading.Thread(target=log_progress,
+                threading.Thread(target=interpret_progress,
                                  args=("Uploading", status, start_time, last_size, last_time),
                                  daemon=True).start()
                 last_size = status.resumable_progress
@@ -143,7 +147,7 @@ def download_loop(downloader):
         print("Downloading 0%", end='\r')
         while done is False:
             status, done = downloader.next_chunk()
-            threading.Thread(target=log_progress,
+            threading.Thread(target=interpret_progress,
                              args=("Downloading", status, start_time, last_size, last_time),
                              daemon=True).start()
             last_size = status.resumable_progress
@@ -155,7 +159,7 @@ def download_loop(downloader):
         print('An error happened while downloading the file.')
         print(err)
 
-def log_progress(service, status, start_time, previous_size, previous_time):
+def interpret_progress(service, status, start_time, previous_size, previous_time):
     progress = int(status.progress() * 100)
     total_size = size_to_human_readable(status.total_size)
     current_size = status.resumable_progress
@@ -183,7 +187,7 @@ def main():
         return
 
     func = sys.argv[1]
-    if not func in functions:
+    if func not in functions:
         print('This function is not implemented yet.')
         return
 
