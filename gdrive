@@ -13,6 +13,7 @@ import mimetypes
 from os.path import expanduser
 import threading
 import time
+import getopt
 
 CHUNK_SIZE = 1024 * 1024 # 1MB
 
@@ -27,7 +28,7 @@ SCOPES = [
     'https://www.googleapis.com/auth/drive.metadata'
 ]
 
-functions = ['download', 'upload']
+functions = ['download', 'upload', 'list']
 
 def init():
     """Shows basic usage of the Drive v3 API.
@@ -120,9 +121,45 @@ def upload_loop(created_file):
         print('An error occurred while uploading the file.')
         print(err)
 
+def search_filename(service, file_name = None, pageSize = 10, pageToken = None):
+    query = ''
+    if file_name:
+        # Could also be name = '%s' for an exact search
+        query = "name contains '%s'" % file_name
+    if pageToken is None:
+        pageToken = ''
+    fields = 'nextPageToken, files/id, files/name, files/size, files/modifiedTime, files/owners'
+    search = service.files().list(q = query,
+                                  orderBy = 'modifiedTime desc',
+                                  fields = fields, 
+                                  pageSize = pageSize,
+                                  pageToken = pageToken).execute()
+    return search.get('files', []), search.get('nextPageToken', None)
+
+def list_files(service, file_name):
+    files, nextPage = search_filename(service, file_name, 10)
+    for i in range(0, len(files)):
+        describe_file(files[i])
+    while not nextPage is None:
+        if (input(">>> Press Enter for the next results\n")):
+            break
+        files, nextPage = search_filename(service, file_name, 10, nextPage)
+        for i in range(0, len(files)):
+            describe_file(files[i])
+
+def download_name(service, file_name):
+    if file_name is None:
+        print('Please inform the name of the file you want to download. Exiting...')
+        return
+    file_found, ignore = search_filename(service, file_name, 1)
+    if (not file_found):
+        return print("Could not find any file with the name '%s'" % file_name)        
+    describe_file(file_found[0])
+    download(service, file_found[0]["id"])
+
 def download(service, file_id):
     if file_id is None:
-        print('Please inform the ID of the file you want to download. Exiting..')
+        print('Please inform the ID of the file you want to download. Exiting...')
         return
 
     filename = get_filename(service, file_id)
@@ -159,6 +196,14 @@ def download_loop(downloader):
         print('An error happened while downloading the file.')
         print(err)
 
+def describe_file(file):
+    print("Name: %s" % file["name"])
+    if ('size' in file):
+        print("Size: %s" % size_to_human_readable(float(file["size"])))
+    print("Modified: %s" % file["modifiedTime"])
+    print("Owner: %s" % file["owners"][0]["displayName"])
+    print("ID: %s\n" % file["id"])
+
 def interpret_progress(service, status, start_time, previous_size, previous_time):
     progress = int(status.progress() * 100)
     total_size = size_to_human_readable(status.total_size)
@@ -179,28 +224,65 @@ def interpret_progress(service, status, start_time, previous_size, previous_time
     print("%s %d%% - %s/%s - %s/s - %s - ETA: %s             " % 
          (service, progress, size, total_size, speed, timer, eta), end='\r')
 
+# Feels a bit like over engineering at the moment, but might prove useful later
+def readArgv(argvs):
+    file_id= file_name = None
+    try:
+        opts, args = getopt.getopt(sys.argv[2:], "hn:i::", ["help", "name=", "id="])
+    except getopt.GetoptError as err:
+        help()
+    for opt, value in opts:
+        if opt in ("-h", "--help"):
+            help()
+        elif opt in ("-i", "--id"):
+            file_id = value
+        elif opt in ("-n", "--name"):
+            file_name = value
+        else:
+            assert False, "unhandled option"
+    return file_id, file_name
+
+def help():
+    print("Download examples:")
+    print("\tdownload some_file.gz")
+    print("\tdownload --name some_file.gz")
+    print("\tdownload --id abcde123456")
+    print("\nUpload examples:")
+    print("\tupload some_file.gz")
+    print("\nList examples:")
+    print("\tlist some_file")
+    sys.exit()
+
 def main():
-    #print('Argument List:', str(sys.argv))
     args_size = len(sys.argv)
     if args_size < 3:
-        print('Not enough arguments. Exiting..')
-        return
+        return help()        
 
     func = sys.argv[1]
     if func not in functions:
         print('This function is not implemented yet.')
-        return
+        return help()
 
     service = init()
     if service is None:
         print('Failed to start service. Exiting..')
         return
 
-
+    # If there is an ID, downloads with that ID
+    # If there is a name, downloads with that name
+    # If there is nothing, downloads with the third argument
     if func == 'download':
-        download(service, sys.argv[2])
-    else:
+        file_id, file_name = readArgv(sys.argv[1:])
+        if file_id:
+            download(service, file_id)
+        else:
+            if not file_name:
+                file_name = sys.argv[2]
+            download_name(service, file_name)
+    elif func == 'upload':
         upload(service, sys.argv[2])
+    elif func == 'list':
+        list_files(service, sys.argv[2])
 
 if __name__ == '__main__':
     main()
