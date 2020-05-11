@@ -73,57 +73,9 @@ def size_to_human_readable(num, suffix='B'):
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
 
-def upload(service, filepath):
-    guessed_type = mimetypes.guess_type(filepath, True)
-    if guessed_type is None:
-        print('Wasn`t able to guess mimetype.')
-        return
-    mime_type = guessed_type[0]
-
-    filename = filepath.split('/')[-1]
-    print('Uploading the file: %s' % filename)
-
-    try:
-        file_metadata = {'name': filename}
-
-        media = MediaFileUpload(filepath,
-                                mimetype=mime_type,
-                                resumable=True,
-                                chunksize=CHUNK_SIZE)
-
-        created_file = service.files().create(body=file_metadata,
-                                              media_body=media,
-                                              fields='id')
-        upload_loop(created_file)
-    except Exception as err:
-        print('An error occurred while uploading the file.')
-        print(err)
-
-def upload_loop(created_file):
-    try:
-        last_size = 0.0
-        last_time = start_time = time.time()
-        response = logger = None
-        print("Uploading 0%", end='\r')
-        while response is None:
-            status, response = created_file.next_chunk()
-            # Does not log if the previous logging is not done yet
-            if status and (not logger or not logger.isAlive()):
-                logger = threading.Thread(target=interpret_progress,
-                                          args=("Uploading", status, start_time, last_size, last_time),
-                                          daemon=True)
-                logger.start()
-                last_size = status.resumable_progress
-                last_time = time.time()
-        print("Uploaded 100%")
-        print('File ID: %s\n' % response.get('id'))
-    except Exception as err:
-        print('An error occurred while uploading the file.')
-        print(err)
-
-def search_filename(service, file_name = None, pageSize = 10, pageToken = None):
+def search_filename(service, file_name = None, pageSize = 10, all = False, pageToken = None):
     query = ''
-    if file_name:
+    if file_name and not all:
         # Could also be name = '%s' for an exact search
         query = "name contains '%s'" % file_name
     if pageToken is None:
@@ -136,8 +88,8 @@ def search_filename(service, file_name = None, pageSize = 10, pageToken = None):
                                   pageToken = pageToken).execute()
     return search.get('files', []), search.get('nextPageToken', None)
 
-def list_files(service, file_name):
-    files, nextPage = search_filename(service, file_name, 10)
+def list_files(service, file_name, all=False):
+    files, nextPage = search_filename(service, file_name, 10, all)
     for i in range(0, len(files)):
         describe_file(files[i])
     while not nextPage is None:
@@ -146,6 +98,14 @@ def list_files(service, file_name):
         files, nextPage = search_filename(service, file_name, 10, nextPage)
         for i in range(0, len(files)):
             describe_file(files[i])
+
+def describe_file(file):
+    print("Name: %s" % file["name"])
+    if ('size' in file):
+        print("Size: %s" % size_to_human_readable(float(file["size"])))
+    print("Modified: %s" % file["modifiedTime"])
+    print("Owner: %s" % file["owners"][0]["displayName"])
+    print("ID: %s\n" % file["id"])
 
 def download_name(service, file_name):
     if file_name is None:
@@ -169,88 +129,84 @@ def download(service, file_id):
 
         fh = io.FileIO(filename, 'wb')
         downloader = MediaIoBaseDownload(fh, request, chunksize=CHUNK_SIZE)
-        download_loop(downloader)
-    except Exception as err:
-        print('An error happened while downloading the file.')
-        print(err)
-
-def download_loop(downloader):
-    try:
-        last_size = 0.0
-        last_time = start_time = time.time()
-        logger = None
+        
         done = False
         print("Downloading 0%", end='\r')
+        logger = Logger("Downloading")
         while done is False:
             status, done = downloader.next_chunk()
-            # Does not log if the previous logging is not done yet
-            if not logger or not logger.isAlive():
-                logger = threading.Thread(target=interpret_progress,
-                                          args=("Downloading", status, start_time, last_size, last_time),
-                                          daemon=True)
-                logger.start()
-                last_size = status.resumable_progress
-                last_time = time.time() 
-        print("Downloaded 100%")
+            logger.send(status)
+        logger.close()
+        print("Downloaded 100% ")
     except Exception as err:
         print('An error happened while downloading the file.')
         print(err)
 
-def describe_file(file):
-    print("Name: %s" % file["name"])
-    if ('size' in file):
-        print("Size: %s" % size_to_human_readable(float(file["size"])))
-    print("Modified: %s" % file["modifiedTime"])
-    print("Owner: %s" % file["owners"][0]["displayName"])
-    print("ID: %s\n" % file["id"])
+def upload(service, filepath):
+    guessed_type = mimetypes.guess_type(filepath, True)
+    if guessed_type is None:
+        print('Wasn`t able to guess mimetype.')
+        return
+    mime_type = guessed_type[0]
 
-def interpret_progress(service, status, start_time, previous_size, previous_time):
-    progress = int(status.progress() * 100)
-    total_size = size_to_human_readable(status.total_size)
-    current_size = status.resumable_progress
-    size = size_to_human_readable(current_size)
+    filename = filepath.split('/')[-1]
+    print('Uploading the file: %s' % filename)
 
-    current_time = time.time()    
-    timer = time.strftime("%H:%M:%S", time.gmtime(current_time - start_time))
-
-    diff_size = current_size - previous_size
-    diff_time = current_time - previous_time
-    bps = diff_size / diff_time
-    speed = size_to_human_readable(bps)
-
-    estimated_time = (status.total_size - current_size) / bps
-    eta = time.strftime("%H:%M:%S", time.gmtime(estimated_time))
-    
-    print("%s %d%% - %s/%s - %s/s - %s - ETA: %s             " % 
-         (service, progress, size, total_size, speed, timer, eta), end='\r')
-
-# Feels a bit like over engineering at the moment, but might prove useful later
-def readArgv(argvs):
-    file_id= file_name = None
     try:
-        opts, args = getopt.getopt(sys.argv[2:], "hn:i::", ["help", "name=", "id="])
+        file_metadata = {'name': filename}
+        media = MediaFileUpload(filepath,
+                                mimetype=mime_type,
+                                resumable=True,
+                                chunksize=CHUNK_SIZE)
+        created_file = service.files().create(body=file_metadata,
+                                              media_body=media,
+                                              fields='id')        
+        response = None
+        print("Uploading 0%", end='\r')
+        logger = Logger("Uploading")
+        while response is None:
+            status, response = created_file.next_chunk()
+            if status:
+                logger.send(status)
+        logger.close()
+        print("Uploaded 100% ")
+        print('File ID: %s\n' % response.get('id'))
+    except Exception as err:
+        print('An error occurred while uploading the file.')
+        print(err)
+
+def readArgv(argvs):
+    list_all = file_id = file_name = None
+    try:
+        opts, args = getopt.getopt(sys.argv[2:], "han:i::", ["help", "all", "name=", "id="])
     except getopt.GetoptError as err:
         help()
     for opt, value in opts:
         if opt in ("-h", "--help"):
             help()
+        if opt in ("-a", "--all"):
+            list_all = True
         elif opt in ("-i", "--id"):
             file_id = value
         elif opt in ("-n", "--name"):
             file_name = value
         else:
             assert False, "unhandled option"
-    return file_id, file_name
+    return { 'file_id': file_id, 'file_name': file_name, 'list_all': list_all }
 
 def help():
     print("Download examples:")
     print("\tdownload some_file.gz")
     print("\tdownload --name some_file.gz")
+    print("\tdownload -n some_file.gz")
     print("\tdownload --id abcde123456")
+    print("\tdownload -i abcde123456")
     print("\nUpload examples:")
     print("\tupload some_file.gz")
     print("\nList examples:")
     print("\tlist some_file")
+    print("\tlist --all")
+    print("\tlist -a")
     sys.exit()
 
 def main():
@@ -268,21 +224,94 @@ def main():
         print('Failed to start service. Exiting..')
         return
 
+    opt = readArgv(sys.argv[1:])
     # If there is an ID, downloads with that ID
     # If there is a name, downloads with that name
     # If there is nothing, downloads with the third argument
     if func == 'download':
-        file_id, file_name = readArgv(sys.argv[1:])
-        if file_id:
-            download(service, file_id)
+        if opt['file_id']:
+            download(service, opt['file_id'])
         else:
-            if not file_name:
-                file_name = sys.argv[2]
-            download_name(service, file_name)
+            if not opt['file_name']:
+                opt['file_name'] = sys.argv[2]
+            download_name(service, opt['file_name'])
     elif func == 'upload':
         upload(service, sys.argv[2])
     elif func == 'list':
-        list_files(service, sys.argv[2])
+        list_files(service, sys.argv[2], opt['list_all'])
+
+
+class ConflatedChannel:
+    def __init__(self):
+        self.__channel = []
+        self.__open = True
+
+    def __str__(self):
+        return str(self.__channel)
+
+    def send(self, value):
+        self.__channel.clear()
+        self.__channel.append(value)
+
+    def pop(self):
+        try:
+            return self.__channel.pop()
+        except:
+            return None
+
+    def isOpen(self):
+        return self.__open
+
+    def close(self):
+        self.__open = False
+
+class Logger():
+    def __init__(self, operation):
+        self.__channel = ConflatedChannel()
+        self.__operation = operation
+        self.__start_time = time.time()
+        self.__worker = threading.Thread(target=self.__work, daemon=True)
+        self.__worker.start()
+
+    def send(self, status):
+        self.__channel.send(status)
+
+    def close(self):
+        self.__channel.close()
+        self.__worker.join()
+
+    def __work(self):
+        last_size = 0.0
+        last_time = self.__start_time
+        while self.__channel.isOpen():
+            status = self.__channel.pop()
+            if (status):
+                new_time = time.time()
+                self.__log_progress(status, last_size, last_time)
+                last_time = new_time 
+                last_size = status.resumable_progress
+            # Limits logs to 1 per second at most
+            time.sleep(1)
+
+    def __log_progress(self, status, previous_size, previous_time):
+        progress = int(status.progress() * 100)
+        total_size = size_to_human_readable(status.total_size)
+        current_size = status.resumable_progress
+        size = size_to_human_readable(current_size)
+
+        current_time = time.time()    
+        timer = time.strftime("%H:%M:%S", time.gmtime(current_time - self.__start_time))
+
+        diff_size = current_size - previous_size
+        diff_time = current_time - previous_time
+        bps = diff_size / diff_time
+        speed = size_to_human_readable(bps)
+
+        estimated_time = (status.total_size - current_size) / bps
+        eta = time.strftime("%H:%M:%S", time.gmtime(estimated_time))
+        
+        print("%s %d%% - %s/%s - %s/s - %s - ETA: %s             " % 
+            (self.__operation, progress, size, total_size, speed, timer, eta), end='\r')
 
 if __name__ == '__main__':
     main()
