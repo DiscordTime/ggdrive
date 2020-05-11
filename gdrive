@@ -73,9 +73,9 @@ def size_to_human_readable(num, suffix='B'):
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
 
-def search_filename(service, file_name = None, pageSize = 10, pageToken = None):
+def search_filename(service, file_name = None, pageSize = 10, all = False, pageToken = None):
     query = ''
-    if file_name:
+    if file_name and not all:
         # Could also be name = '%s' for an exact search
         query = "name contains '%s'" % file_name
     if pageToken is None:
@@ -88,8 +88,8 @@ def search_filename(service, file_name = None, pageSize = 10, pageToken = None):
                                   pageToken = pageToken).execute()
     return search.get('files', []), search.get('nextPageToken', None)
 
-def list_files(service, file_name):
-    files, nextPage = search_filename(service, file_name, 10)
+def list_files(service, file_name, all=False):
+    files, nextPage = search_filename(service, file_name, 10, all)
     for i in range(0, len(files)):
         describe_file(files[i])
     while not nextPage is None:
@@ -176,31 +176,37 @@ def upload(service, filepath):
         print(err)
 
 def readArgv(argvs):
-    file_id= file_name = None
+    list_all = file_id = file_name = None
     try:
-        opts, args = getopt.getopt(sys.argv[2:], "hn:i::", ["help", "name=", "id="])
+        opts, args = getopt.getopt(sys.argv[2:], "han:i::", ["help", "all", "name=", "id="])
     except getopt.GetoptError as err:
         help()
     for opt, value in opts:
         if opt in ("-h", "--help"):
             help()
+        if opt in ("-a", "--all"):
+            list_all = True
         elif opt in ("-i", "--id"):
             file_id = value
         elif opt in ("-n", "--name"):
             file_name = value
         else:
             assert False, "unhandled option"
-    return file_id, file_name
+    return { 'file_id': file_id, 'file_name': file_name, 'list_all': list_all }
 
 def help():
     print("Download examples:")
     print("\tdownload some_file.gz")
     print("\tdownload --name some_file.gz")
+    print("\tdownload -n some_file.gz")
     print("\tdownload --id abcde123456")
+    print("\tdownload -i abcde123456")
     print("\nUpload examples:")
     print("\tupload some_file.gz")
     print("\nList examples:")
     print("\tlist some_file")
+    print("\tlist --all")
+    print("\tlist -a")
     sys.exit()
 
 def main():
@@ -218,21 +224,21 @@ def main():
         print('Failed to start service. Exiting..')
         return
 
+    opt = readArgv(sys.argv[1:])
     # If there is an ID, downloads with that ID
     # If there is a name, downloads with that name
     # If there is nothing, downloads with the third argument
     if func == 'download':
-        file_id, file_name = readArgv(sys.argv[1:])
-        if file_id:
-            download(service, file_id)
+        if opt['file_id']:
+            download(service, opt['file_id'])
         else:
-            if not file_name:
-                file_name = sys.argv[2]
-            download_name(service, file_name)
+            if not opt['file_name']:
+                opt['file_name'] = sys.argv[2]
+            download_name(service, opt['file_name'])
     elif func == 'upload':
         upload(service, sys.argv[2])
     elif func == 'list':
-        list_files(service, sys.argv[2])
+        list_files(service, sys.argv[2], opt['list_all'])
 
 
 class ConflatedChannel:
