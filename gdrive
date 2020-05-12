@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
 
+"""A script to interact with your Google Drive files using the terminal"""
+
 import pickle
 import os.path
-from googleapiclient.discovery import build
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
-from googleapiclient.http import MediaIoBaseDownload
-from googleapiclient.http import MediaFileUpload
 import io
 import sys
 import mimetypes
-from os.path import expanduser
 import threading
 import time
 import getopt
+from os.path import expanduser
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
+from googleapiclient.http import MediaFileUpload
 
 CHUNK_SIZE = 1024 * 1024 # 1MB
-
 HOME = expanduser("~")
 GDRIVE_PATH = HOME + '/.gdrive/'
 CREDENTIALS_PATH = GDRIVE_PATH + 'credentials.json'
@@ -56,6 +57,7 @@ def init():
     return service
 
 def get_filename(service, file_id):
+    """Gets the file name for a file ID"""
     filename = 'gdrive-file'
     try:
         file_metadata = service.files().get(fileId=file_id, fields='name').execute()
@@ -68,56 +70,62 @@ def get_filename(service, file_id):
     return filename
 
 def size_to_human_readable(num, suffix='B'):
-    for unit in ['','K','M','G','T']:
+    """Converts bytes to a more human-readable metric"""
+    for unit in ['', 'K', 'M', 'G', 'T']:
         if abs(num) < 1024.0:
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
 
-def search_filename(service, file_name = None, pageSize = 10, all = False, pageToken = None):
+def search_filename(service, file_name=None, page_size=10, list_all=False, page_token=None):
+    """Search for a file by filename in the Google Drive"""
     query = ''
-    if file_name and not all:
+    if file_name and not list_all:
         # Could also be name = '%s' for an exact search
         query = "name contains '%s'" % file_name
-    if pageToken is None:
-        pageToken = ''
+    if page_token is None:
+        page_token = ''
     fields = 'nextPageToken, files/id, files/name, files/size, files/modifiedTime, files/owners'
-    search = service.files().list(q = query,
-                                  orderBy = 'modifiedTime desc',
-                                  fields = fields, 
-                                  pageSize = pageSize,
-                                  pageToken = pageToken).execute()
+    search = service.files().list(q=query,
+                                  orderBy='modifiedTime desc',
+                                  fields=fields,
+                                  pageSize=page_size,
+                                  pageToken=page_token).execute()
     return search.get('files', []), search.get('nextPageToken', None)
 
-def list_files(service, file_name, all=False):
-    files, nextPage = search_filename(service, file_name, 10, all)
-    for i in range(0, len(files)):
-        describe_file(files[i])
-    while nextPage is not None:
-        if (input(">>> Press Enter for the next results\n")):
+def list_files(service, file_name, list_all=False):
+    """List files present on user's Google Drive"""
+    files, next_page = search_filename(service, file_name, 10, list_all)
+    for file in files:
+        describe_file(file)
+    while next_page is not None:
+        if input(">>> Press Enter for the next results\n"):
             break
-        files, nextPage = search_filename(service, file_name, 10, nextPage)
-        for i in range(0, len(files)):
-            describe_file(files[i])
+        files, next_page = search_filename(service, file_name, 10, next_page)
+        for file in files:
+            describe_file(file)
 
 def describe_file(file):
+    """Print file metadata"""
     print("Name: %s" % file["name"])
-    if ('size' in file):
+    if 'size' in file:
         print("Size: %s" % size_to_human_readable(float(file["size"])))
     print("Modified: %s" % file["modifiedTime"])
     print("Owner: %s" % file["owners"][0]["displayName"])
     print("ID: %s\n" % file["id"])
 
 def download_name(service, file_name):
+    """Download a file by name"""
     if file_name is None:
         print('Please inform the name of the file you want to download. Exiting...')
         return
-    file_found, ignore = search_filename(service, file_name, 1)
-    if (not file_found):
-        return print("Could not find any file with the name '%s'" % file_name)        
+    file_found, _ = search_filename(service, file_name, 1)
+    if not file_found:
+        return print("Could not find any file with the name '%s'" % file_name)
     describe_file(file_found[0])
     download(service, file_found[0]["id"])
 
 def download(service, file_id):
+    """Download a file by file ID"""
     if file_id is None:
         print('Please inform the ID of the file you want to download. Exiting...')
         return
@@ -127,9 +135,9 @@ def download(service, file_id):
     try:
         request = service.files().get_media(fileId=file_id)
 
-        fh = io.FileIO(filename, 'wb')
-        downloader = MediaIoBaseDownload(fh, request, chunksize=CHUNK_SIZE)
-        
+        file_handler = io.FileIO(filename, 'wb')
+        downloader = MediaIoBaseDownload(file_handler, request, chunksize=CHUNK_SIZE)
+
         done = False
         print("Downloading 0%", end='\r')
         logger = Logger("Downloading")
@@ -143,6 +151,7 @@ def download(service, file_id):
         print(err)
 
 def upload(service, filepath):
+    """Upload a file"""
     guessed_type = mimetypes.guess_type(filepath, True)
     if guessed_type is None:
         print('Wasn`t able to guess mimetype.')
@@ -160,7 +169,7 @@ def upload(service, filepath):
                                 chunksize=CHUNK_SIZE)
         created_file = service.files().create(body=file_metadata,
                                               media_body=media,
-                                              fields='id')        
+                                              fields='id')
         response = None
         print("Uploading 0%", end='\r')
         logger = Logger("Uploading")
@@ -175,15 +184,16 @@ def upload(service, filepath):
         print('An error occurred while uploading the file.')
         print(err)
 
-def read_argv(argvs):
+def read_argv():
+    """Read arguments"""
     list_all = file_id = file_name = None
     try:
-        opts, args = getopt.getopt(sys.argv[2:], "han:i::", ["help", "all", "name=", "id="])
-    except getopt.GetoptError as err:
-        help()
+        opts, _ = getopt.getopt(sys.argv[2:], "han:i::", ["help", "all", "name=", "id="])
+    except getopt.GetoptError:
+        print_help()
     for opt, value in opts:
         if opt in ("-h", "--help"):
-            help()
+            print_help()
         if opt in ("-a", "--all"):
             list_all = True
         elif opt in ("-i", "--id"):
@@ -192,9 +202,10 @@ def read_argv(argvs):
             file_name = value
         else:
             assert False, "unhandled option"
-    return { 'file_id': file_id, 'file_name': file_name, 'list_all': list_all }
+    return {'file_id': file_id, 'file_name': file_name, 'list_all': list_all}
 
-def help():
+def print_help():
+    """Print help"""
     print("Download examples:")
     print("\tdownload some_file.gz")
     print("\tdownload --name some_file.gz")
@@ -210,21 +221,24 @@ def help():
     sys.exit()
 
 def main():
+    """Main function. Entry point for the script"""
     args_size = len(sys.argv)
     if args_size < 3:
-        return help()        
+        print_help()
+        return
 
     func = sys.argv[1]
     if func not in functions:
         print('This function is not implemented yet.')
-        return help()
+        print_help()
+        return
 
     service = init()
     if service is None:
         print('Failed to start service. Exiting..')
         return
 
-    opt = read_argv(sys.argv[1:])
+    opt = read_argv()
     # If there is an ID, downloads with that ID
     # If there is a name, downloads with that name
     # If there is nothing, downloads with the third argument
@@ -242,30 +256,43 @@ def main():
 
 
 class ConflatedChannel:
+    """A list of size 0 or 1. When adding to a list of size=1, substitute the value"""
     def __init__(self):
+        """Initialize channel"""
         self.__channel = []
         self.__open = True
 
     def __str__(self):
+        """String representation"""
         return str(self.__channel)
 
     def send(self, value):
+        """Adds to the channel. If full, replace value.
+        If channel is closed, raise a ValueError.
+        """
+        if not self.is_open():
+            raise ValueError("Channel is closed.")
+
         self.__channel.clear()
         self.__channel.append(value)
 
     def pop(self):
+        """Returns the value in the channel, or None"""
         try:
             return self.__channel.pop()
         except:
             return None
 
     def is_open(self):
+        """Checks if the channel is open for send()"""
         return self.__open
 
     def close(self):
+        """Close the channel. It will not receive new values."""
         self.__open = False
 
 class Logger():
+    """Logs progress from a worker thread."""
     def __init__(self, operation):
         self.__channel = ConflatedChannel()
         self.__operation = operation
@@ -274,32 +301,36 @@ class Logger():
         self.__worker.start()
 
     def send(self, status):
+        """Try to send a new value to the channel."""
         self.__channel.send(status)
 
     def close(self):
+        """Close the channel and join the thread."""
         self.__channel.close()
         self.__worker.join()
 
     def __work(self):
+        """Print logs while the channel is open and receiving values."""
         last_size = 0.0
         last_time = self.__start_time
         while self.__channel.is_open():
             status = self.__channel.pop()
-            if (status):
+            if status:
                 new_time = time.time()
                 self.__log_progress(status, last_size, last_time)
-                last_time = new_time 
+                last_time = new_time
                 last_size = status.resumable_progress
             # Limits logs to 1 per second at most
             time.sleep(1)
 
     def __log_progress(self, status, previous_size, previous_time):
+        """Print log from status."""
         progress = int(status.progress() * 100)
         total_size = size_to_human_readable(status.total_size)
         current_size = status.resumable_progress
         size = size_to_human_readable(current_size)
 
-        current_time = time.time()    
+        current_time = time.time()
         timer = time.strftime("%H:%M:%S", time.gmtime(current_time - self.__start_time))
 
         diff_size = current_size - previous_size
@@ -309,9 +340,9 @@ class Logger():
 
         estimated_time = (status.total_size - current_size) / bps
         eta = time.strftime("%H:%M:%S", time.gmtime(estimated_time))
-        
-        print("%s %d%% - %s/%s - %s/s - %s - ETA: %s             " % 
-            (self.__operation, progress, size, total_size, speed, timer, eta), end='\r')
+
+        print("%s %d%% - %s/%s - %s/s - %s - ETA: %s             " %
+              (self.__operation, progress, size, total_size, speed, timer, eta), end='\r')
 
 if __name__ == '__main__':
     main()
