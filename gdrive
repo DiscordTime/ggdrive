@@ -92,7 +92,7 @@ def list_files(service, file_name, all=False):
     files, nextPage = search_filename(service, file_name, 10, all)
     for i in range(0, len(files)):
         describe_file(files[i])
-    while not nextPage is None:
+    while nextPage is not None:
         if (input(">>> Press Enter for the next results\n")):
             break
         files, nextPage = search_filename(service, file_name, 10, nextPage)
@@ -175,7 +175,7 @@ def upload(service, filepath):
         print('An error occurred while uploading the file.')
         print(err)
 
-def readArgv(argvs):
+def read_argv(argvs):
     list_all = file_id = file_name = None
     try:
         opts, args = getopt.getopt(sys.argv[2:], "han:i::", ["help", "all", "name=", "id="])
@@ -224,7 +224,7 @@ def main():
         print('Failed to start service. Exiting..')
         return
 
-    opt = readArgv(sys.argv[1:])
+    opt = read_argv(sys.argv[1:])
     # If there is an ID, downloads with that ID
     # If there is a name, downloads with that name
     # If there is nothing, downloads with the third argument
@@ -259,7 +259,7 @@ class ConflatedChannel:
         except:
             return None
 
-    def isOpen(self):
+    def is_open(self):
         return self.__open
 
     def close(self):
@@ -283,7 +283,7 @@ class Logger():
     def __work(self):
         last_size = 0.0
         last_time = self.__start_time
-        while self.__channel.isOpen():
+        while self.__channel.is_open():
             status = self.__channel.pop()
             if (status):
                 new_time = time.time()
