@@ -16,6 +16,7 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from googleapiclient.http import MediaFileUpload
+from googleapiclient.errors import HttpError
 
 CHUNK_SIZE = 1024 * 1024 # 1MB
 HOME = expanduser("~")
@@ -56,18 +57,13 @@ def init():
     service = build('drive', 'v3', credentials=creds)
     return service
 
-def get_filename(service, file_id):
+def get_metadata(service, file_id):
     """Gets the file name for a file ID"""
-    filename = 'gdrive-file'
     try:
-        file_metadata = service.files().get(fileId=file_id, fields='name').execute()
-        filename = file_metadata['name']
-    except Exception as err:
-        print('An error happened while getting file name.')
-        print(err)
-
-    print('Filename is "%s" for ID: %s.' % (filename, file_id))
-    return filename
+        fields = 'id, name, size, modifiedTime, modifiedByMeTime, owners'
+        return service.files().get(fileId=file_id, fields=fields).execute()
+    except HttpError:
+        return None
 
 def size_to_human_readable(num, suffix='B'):
     """Converts bytes to a more human-readable metric"""
@@ -75,62 +71,82 @@ def size_to_human_readable(num, suffix='B'):
         if abs(num) < 1024.0:
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
+    return None
 
-def search_filename(service, file_name=None, page_size=10, list_all=False, page_token=None):
+def search_filename(service, filename=None, page_size=10, list_all=False, page_token=None):
     """Search for a file by filename in the Google Drive"""
     query = ''
-    if file_name and not list_all:
+    if filename and not list_all:
         # Could also be name = '%s' for an exact search
-        query = "name contains '%s'" % file_name
+        query = "name contains '%s'" % filename
     if page_token is None:
         page_token = ''
-    fields = 'nextPageToken, files/id, files/name, files/size, files/modifiedTime, files/owners'
+    fields = ('nextPageToken, files/id, files/name, files/size, '
+              'files/modifiedTime, files/modifiedByMeTime, files/owners')
     search = service.files().list(q=query,
-                                  orderBy='modifiedTime desc',
+                                  orderBy='modifiedByMeTime desc',
                                   fields=fields,
                                   pageSize=page_size,
                                   pageToken=page_token).execute()
     return search.get('files', []), search.get('nextPageToken', None)
 
-def list_files(service, file_name, list_all=False):
+def list_files(service, filename, list_all=False):
     """List files present on user's Google Drive"""
-    files, next_page = search_filename(service, file_name, 10, list_all)
-    for file in files:
-        describe_file(file)
+    files_found, next_page = search_filename(service, filename, 10, list_all)
+    for metadata in files_found:
+        describe_file(metadata)
     while next_page is not None:
         if input(">>> Press Enter for the next results\n"):
             break
-        files, next_page = search_filename(service, file_name, 10, next_page)
-        for file in files:
-            describe_file(file)
+        files_found, next_page = search_filename(service, filename, 10, list_all, next_page)
+        for metadata in files_found:
+            describe_file(metadata)
 
-def describe_file(file):
+def describe_file(metadata):
     """Print file metadata"""
-    print("Name: %s" % file["name"])
-    if 'size' in file:
-        print("Size: %s" % size_to_human_readable(float(file["size"])))
-    print("Modified: %s" % file["modifiedTime"])
-    print("Owner: %s" % file["owners"][0]["displayName"])
-    print("ID: %s\n" % file["id"])
+    print("Name: %s" % metadata["name"])
+    print("Owner: %s" % metadata["owners"][0]["displayName"])
+    if 'size' in metadata:
+        print("Size: %s" % size_to_human_readable(float(metadata["size"])))
+    if 'modifiedByMeTime' in metadata:
+        print("Modified by Me: %s" % metadata["modifiedByMeTime"])
+    else:
+        print("Modified: %s" % metadata["modifiedTime"])
+    print("ID: %s\n" % metadata["id"])
 
-def download_name(service, file_name):
-    """Download a file by name"""
-    if file_name is None:
+def download_last(service):
+    """Get the last modified file and download it"""
+    files_found, _ = search_filename(service, None, 1, True)    
+    if not files_found:
+        print("Could not find any file")
+        return None
+    return download(service, files_found[0]["id"], files_found[0])
+
+def download_search(service, filename):
+    """Search for a file and download it"""
+    if filename:
+        files_found, _ = search_filename(service, filename, 1)
+    else:
         print('Please inform the name of the file you want to download. Exiting...')
-        return
-    file_found, _ = search_filename(service, file_name, 1)
-    if not file_found:
-        return print("Could not find any file with the name '%s'" % file_name)
-    describe_file(file_found[0])
-    download(service, file_found[0]["id"])
+        return None
+    if not files_found:
+        print("Could not find any file that contains '%s' on the name" % filename)
+        return None
+    return download(service, files_found[0]["id"], files_found[0])
 
-def download(service, file_id):
+def download(service, file_id, metadata=None):
     """Download a file by file ID"""
     if file_id is None:
         print('Please inform the ID of the file you want to download. Exiting...')
         return
 
-    filename = get_filename(service, file_id)
+    if metadata is None:
+        metadata = get_metadata(service, file_id)
+        if not metadata:
+            print('Could not find file with that File ID')
+            return
+    filename = metadata["name"] or "gdrive-file1"
+    describe_file(metadata)
 
     try:
         request = service.files().get_media(fileId=file_id)
@@ -186,9 +202,9 @@ def upload(service, filepath):
 
 def read_argv():
     """Read arguments"""
-    list_all = file_id = file_name = None
+    file_id = filename = list_all = download_last = None
     try:
-        opts, _ = getopt.getopt(sys.argv[2:], "han:i::", ["help", "all", "name=", "id="])
+        opts, _ = getopt.getopt(sys.argv[2:], "haln:i::", ["help", "all", "last", "name=", "id="])
     except getopt.GetoptError:
         print_help()
     for opt, value in opts:
@@ -196,22 +212,30 @@ def read_argv():
             print_help()
         if opt in ("-a", "--all"):
             list_all = True
+        elif opt in ("-l", "--last"):
+            download_last = True
         elif opt in ("-i", "--id"):
             file_id = value
         elif opt in ("-n", "--name"):
-            file_name = value
+            filename = value
         else:
             assert False, "unhandled option"
-    return {'file_id': file_id, 'file_name': file_name, 'list_all': list_all}
+    return {'file_id': file_id,
+            'filename': filename,
+            'list_all': list_all,
+            'download_last': download_last}
 
 def print_help():
     """Print help"""
     print("Download examples:")
+    print("\tdownload --last")
+    print("\tdownload -l")
     print("\tdownload some_file.gz")
+    print("\tdownload abcde123456fileid")
     print("\tdownload --name some_file.gz")
     print("\tdownload -n some_file.gz")
-    print("\tdownload --id abcde123456")
-    print("\tdownload -i abcde123456")
+    print("\tdownload --id abcde123456fileid")
+    print("\tdownload -i abcde123456fileid")
     print("\nUpload examples:")
     print("\tupload some_file.gz")
     print("\nList examples:")
@@ -235,23 +259,29 @@ def main():
 
     service = init()
     if service is None:
-        print('Failed to start service. Exiting..')
+        print('Failed to start service. Exiting...')
         return
 
     opt = read_argv()
-    # If there is an ID, downloads with that ID
-    # If there is a name, downloads with that name
-    # If there is nothing, downloads with the third argument
     if func == 'download':
+        # Downloads with the given file ID
         if opt['file_id']:
             download(service, opt['file_id'])
+        elif opt['download_last']:
+            download_last(service)
+        elif opt['filename']:
+            download_search(service, opt['filename'])
         else:
-            if not opt['file_name']:
-                opt['file_name'] = sys.argv[2]
-            download_name(service, opt['file_name'])
-    elif func == 'upload':
+            # Tries to download with the argument as an ID
+            metadata = get_metadata(service, sys.argv[2])
+            if metadata:
+                download(service, sys.argv[2], metadata)
+            # If that fails, tries to use it as a name
+            else:
+                download_search(service, sys.argv[2])
+    if func == 'upload':
         upload(service, sys.argv[2])
-    elif func == 'list':
+    if func == 'list':
         list_files(service, sys.argv[2], opt['list_all'])
 
 
@@ -335,10 +365,9 @@ class Logger():
 
         diff_size = current_size - previous_size
         diff_time = current_time - previous_time
-        bps = diff_size / diff_time
-        speed = size_to_human_readable(bps)
+        speed = size_to_human_readable(diff_size / diff_time)
 
-        estimated_time = (status.total_size - current_size) / bps
+        estimated_time = (status.total_size - current_size) / diff_size / diff_time
         eta = time.strftime("%H:%M:%S", time.gmtime(estimated_time))
 
         print("%s %d%% - %s/%s - %s/s - %s - ETA: %s             " %
