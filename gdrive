@@ -18,7 +18,9 @@ from googleapiclient.http import MediaIoBaseDownload
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
 
-CHUNK_SIZE = 1024 * 1024 # 1MB
+UPLOAD_CHUNK_SIZE = 1024 * 1024 * 128 # 128MB
+DOWNLOAD_CHUNK_SIZE = 1024 * 1024 * 128 # 128MB
+
 HOME = expanduser("~")
 GDRIVE_PATH = HOME + '/.gdrive/'
 CREDENTIALS_PATH = GDRIVE_PATH + 'credentials.json'
@@ -152,7 +154,7 @@ def download(service, file_id, metadata=None):
         request = service.files().get_media(fileId=file_id)
 
         file_handler = io.FileIO(filename, 'wb')
-        downloader = MediaIoBaseDownload(file_handler, request, chunksize=CHUNK_SIZE)
+        downloader = MediaIoBaseDownload(file_handler, request, chunksize=DOWNLOAD_CHUNK_SIZE)
 
         done = False
         print("Downloading 0%", end='\r')
@@ -182,7 +184,7 @@ def upload(service, filepath):
         media = MediaFileUpload(filepath,
                                 mimetype=mime_type,
                                 resumable=True,
-                                chunksize=CHUNK_SIZE)
+                                chunksize=UPLOAD_CHUNK_SIZE)
         created_file = service.files().create(body=file_metadata,
                                               media_body=media,
                                               fields='id')
