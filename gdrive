@@ -3,6 +3,7 @@
 """A script to interact with your Google Drive files using the terminal"""
 
 import pickle
+import glob
 import os.path
 import io
 import sys
@@ -168,6 +169,17 @@ def download(service, file_id, metadata=None):
         print('An error happened while downloading the file.')
         print(err)
 
+def upload_last_modified(service, filename):
+    """Search a file with wildcard support, sorting by last modified"""
+    files_found = glob.glob(filename)
+    files_found.sort(key=os.path.getmtime, reverse=True)
+    if len(files_found) == 0:
+        print('Could not find any files with "%s"' % filename)
+        return
+    chosen_file = files_found[0]
+    print('Found %s files, uploading last modified file: %s' % (len(files_found), chosen_file))
+    upload(service, str(chosen_file))
+
 def upload(service, filepath):
     """Upload a file"""
     guessed_type = mimetypes.guess_type(filepath, True)
@@ -204,7 +216,7 @@ def upload(service, filepath):
 
 def read_argv():
     """Read arguments"""
-    file_id = filename = list_all = download_last = None
+    file_id = filename = list_all = last_modified = None
     try:
         opts, _ = getopt.getopt(sys.argv[2:], "haln:i::", ["help", "all", "last", "name=", "id="])
     except getopt.GetoptError:
@@ -215,7 +227,7 @@ def read_argv():
         if opt in ("-a", "--all"):
             list_all = True
         elif opt in ("-l", "--last"):
-            download_last = True
+            last_modified = True
         elif opt in ("-i", "--id"):
             file_id = value
         elif opt in ("-n", "--name"):
@@ -225,7 +237,7 @@ def read_argv():
     return {'file_id': file_id,
             'filename': filename,
             'list_all': list_all,
-            'download_last': download_last}
+            'last_modified': last_modified}
 
 def print_help():
     """Print help"""
@@ -233,13 +245,16 @@ def print_help():
     print("\tdownload --last")
     print("\tdownload -l")
     print("\tdownload some_file.gz")
-    print("\tdownload abcde123456fileid")
+    print("\tdownload *file*")
+    print("\tdownload fileid123456")
     print("\tdownload --name some_file.gz")
     print("\tdownload -n some_file.gz")
-    print("\tdownload --id abcde123456fileid")
-    print("\tdownload -i abcde123456fileid")
+    print("\tdownload --id fileid123456")
+    print("\tdownload -i fileid123456")
     print("\nUpload examples:")
     print("\tupload some_file.gz")
+    print("\tupload --last *file*")
+    print("\tupload -l *file*")
     print("\nList examples:")
     print("\tlist some_file")
     print("\tlist --all")
@@ -269,7 +284,7 @@ def main():
         # Downloads with the given file ID
         if opt['file_id']:
             download(service, opt['file_id'])
-        elif opt['download_last']:
+        elif opt['last_modified']:
             download_last(service)
         elif opt['filename']:
             download_search(service, opt['filename'])
@@ -282,7 +297,10 @@ def main():
             else:
                 download_search(service, sys.argv[2])
     if func == 'upload':
-        upload(service, sys.argv[2])
+        if opt['last_modified']:
+            upload_last_modified(service, sys.argv[3])
+        else:
+            upload(service, sys.argv[2])
     if func == 'list':
         list_files(service, sys.argv[2], opt['list_all'])
 
