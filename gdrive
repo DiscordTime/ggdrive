@@ -2,14 +2,13 @@
 
 """A script to interact with your Google Drive files using the terminal"""
 
-import pickle
-import os.path
+import os
 import io
-import sys
+import pickle
 import mimetypes
 import threading
 import time
-import getopt
+from argparse import ArgumentParser
 from os.path import expanduser
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -18,273 +17,412 @@ from googleapiclient.http import MediaIoBaseDownload
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
 
-UPLOAD_CHUNK_SIZE = 1024 * 1024 * 128 # 128MB
-DOWNLOAD_CHUNK_SIZE = 1024 * 1024 * 128 # 128MB
+class GoogleCredentials():
+    """Handles the local Credentials file for the Google Drive API"""
+    HOME = expanduser("~")
+    GDRIVE_PATH = HOME + '/.gdrive/'
+    CREDENTIALS_PATH = GDRIVE_PATH + 'credentials.json'
+    TOKEN_PATH = GDRIVE_PATH + 'token.pickle'
+    SCOPES = [
+        'https://www.googleapis.com/auth/drive',
+        'https://www.googleapis.com/auth/drive.metadata'
+    ]
 
-HOME = expanduser("~")
-GDRIVE_PATH = HOME + '/.gdrive/'
-CREDENTIALS_PATH = GDRIVE_PATH + 'credentials.json'
-TOKEN_PATH = GDRIVE_PATH + 'token.pickle'
+    def build(self):
+        self.load_credentials()
+        if not self.is_credentials_valid():
+            self.prepare_credentials()
+        return self.__creds
 
-# If modifying these scopes, delete the file token.pickle.
-SCOPES = [
-    'https://www.googleapis.com/auth/drive',
-    'https://www.googleapis.com/auth/drive.metadata'
-]
-
-functions = ['download', 'upload', 'list']
-
-def init():
-    """Shows basic usage of the Drive v3 API.
-    Prints the names and ids of the first 10 files the user has access to.
-    """
-    creds = None
-    # The file token.pickle stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
-    if os.path.exists(TOKEN_PATH):
-        with open(TOKEN_PATH, 'rb') as token:
-            creds = pickle.load(token)
-    # If there are no (valid) credentials available, let the user log in.
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+    def prepare_credentials(self):
+        if self.is_credentials_outdated():
+            self.__creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                CREDENTIALS_PATH, SCOPES)
-            creds = flow.run_local_server(port=0)
-        # Save the credentials for the next run
-        with open(TOKEN_PATH, 'wb') as token:
-            pickle.dump(creds, token)
-    service = build('drive', 'v3', credentials=creds)
-    return service
+            self.create_credentials()
+        self.save_credentials()
 
-def get_metadata(service, file_id):
-    """Gets the file name for a file ID"""
-    try:
-        fields = 'id, name, size, modifiedTime, modifiedByMeTime, owners'
-        return service.files().get(fileId=file_id, fields=fields).execute()
-    except HttpError:
-        return None
+    def load_credentials(self):
+        if os.path.exists(self.TOKEN_PATH):
+            with open(self.TOKEN_PATH, 'rb') as token:
+                self.__creds = pickle.load(token)
 
-def size_to_human_readable(num, suffix='B'):
-    """Converts bytes to a more human-readable metric"""
-    for unit in ['', 'K', 'M', 'G', 'T']:
-        if abs(num) < 1024.0:
-            return "%3.1f%s%s" % (num, unit, suffix)
-        num /= 1024.0
-    return None
+    def is_credentials_valid(self):
+        return self.__creds is not None and self.__creds.valid
 
-def search_filename(service, filename=None, page_size=10, list_all=False, page_token=None):
-    """Search for a file by filename in the Google Drive"""
-    query = ''
-    if filename and not list_all:
-        # Could also be name = '%s' for an exact search
-        query = "name contains '%s'" % filename
-    if page_token is None:
-        page_token = ''
-    fields = ('nextPageToken, files/id, files/name, files/size, '
-              'files/modifiedTime, files/modifiedByMeTime, files/owners')
-    search = service.files().list(q=query,
-                                  orderBy='modifiedByMeTime desc',
-                                  fields=fields,
-                                  pageSize=page_size,
-                                  pageToken=page_token).execute()
-    return search.get('files', []), search.get('nextPageToken', None)
+    def is_credentials_outdated(self):
+        return self.__creds.expired and self.__creds.refresh_token
 
-def list_files(service, filename, list_all=False):
-    """List files present on user's Google Drive"""
-    files_found, next_page = search_filename(service, filename, 10, list_all)
-    for metadata in files_found:
-        describe_file(metadata)
-    while next_page is not None:
-        if input(">>> Press Enter for the next results\n"):
-            break
-        files_found, next_page = search_filename(service, filename, 10, list_all, next_page)
-        for metadata in files_found:
-            describe_file(metadata)
+    def create_credentials(self):
+        flow = InstalledAppFlow.from_client_secrets_file(self.CREDENTIALS_PATH, self.SCOPES)
+        self.__creds = flow.run_local_server(port=0)
 
-def describe_file(metadata):
-    """Print file metadata"""
-    print("Name: %s" % metadata["name"])
-    print("Owner: %s" % metadata["owners"][0]["displayName"])
-    if 'size' in metadata:
-        print("Size: %s" % size_to_human_readable(float(metadata["size"])))
-    if 'modifiedByMeTime' in metadata:
-        print("Modified by Me: %s" % metadata["modifiedByMeTime"])
-    else:
-        print("Modified: %s" % metadata["modifiedTime"])
-    print("ID: %s\n" % metadata["id"])
+    def save_credentials(self):
+        with open(self.TOKEN_PATH, 'wb') as token:
+            pickle.dump(self.__creds, token)
 
-def download_last(service):
-    """Get the last modified file and download it"""
-    files_found, _ = search_filename(service, None, 1, True)    
-    if not files_found:
-        print("Could not find any file")
-        return None
-    return download(service, files_found[0]["id"], files_found[0])
 
-def download_search(service, filename):
-    """Search for a file and download it"""
-    if filename:
-        files_found, _ = search_filename(service, filename, 1)
-    else:
-        print('Please inform the name of the file you want to download. Exiting...')
-        return None
-    if not files_found:
-        print("Could not find any file that contains '%s' on the name" % filename)
-        return None
-    return download(service, files_found[0]["id"], files_found[0])
+class GoogleService():
+    """Encapsulates Google Drive API, provides usability methods and keeps API-side configurations"""
+    UPLOAD_CHUNK_SIZE = 1024 * 1024 * 128 # 128MB
+    DOWNLOAD_CHUNK_SIZE = 1024 * 1024 * 128 # 128MB
 
-def download(service, file_id, metadata=None):
-    """Download a file by file ID"""
-    if file_id is None:
-        print('Please inform the ID of the file you want to download. Exiting...')
-        return
+    def __init__(self):
+        creds = GoogleCredentials().build()
+        self.__google = build('drive', 'v3', credentials=creds)
+    
+    def is_valid(self):
+        return self.__google is not None
 
-    if metadata is None:
-        metadata = get_metadata(service, file_id)
-        if not metadata:
-            print('Could not find file with that File ID')
-            return
-    filename = metadata["name"] or "gdrive-file1"
-    describe_file(metadata)
+    def drive(self):
+        # Google Drive resource is dynamically populated
+        # pylint: disable=maybe-no-member
+        return self.__google.files()
 
-    try:
-        request = service.files().get_media(fileId=file_id)
+    def get_file_metadata(self, file_id):
+        try:
+            fields = 'id, name, size, modifiedTime, modifiedByMeTime, owners'
+            return self.drive().get(fileId=file_id, fields=fields).execute()
+        except HttpError:
+            return None
 
-        file_handler = io.FileIO(filename, 'wb')
-        downloader = MediaIoBaseDownload(file_handler, request, chunksize=DOWNLOAD_CHUNK_SIZE)
+    def search_filename(self, filename=None, page_size=1, page_token=''):
+        query = ''
+        if filename is not None:
+            # Could also be name = '%s' for an exact search
+            query = "name contains '%s'" % filename
+        fields = ('nextPageToken, files/id, files/name, files/size, '
+                'files/modifiedTime, files/modifiedByMeTime, files/owners')
+        search = self.drive().list(
+            q=query,
+            orderBy='modifiedByMeTime desc',
+            fields=fields,
+            pageSize=page_size,
+            pageToken=page_token
+        ).execute()
+        files_found = search.get('files', [])
+        if files_found and page_size is 1:
+            return files_found[0], None
+        next_page = search.get('nextPageToken', None)
+        return files_found, next_page
 
-        done = False
-        print("Downloading 0%", end='\r')
-        logger = Logger("Downloading")
-        while done is False:
-            status, done = downloader.next_chunk()
-            logger.send(status)
-        logger.close()
-        print("Downloaded 100% ")
-    except Exception as err:
-        print('An error happened while downloading the file.')
-        print(err)
+    def get_last_modified_file(self):
+        file, _ = self.search_filename(None)
+        return file
 
-def upload(service, filepath):
-    """Upload a file"""
-    guessed_type = mimetypes.guess_type(filepath, True)
-    if guessed_type is None:
-        print('Wasn`t able to guess mimetype.')
-        return
-    mime_type = guessed_type[0]
-
-    filename = filepath.split('/')[-1]
-    print('Uploading the file: %s' % filename)
-
-    try:
+    def download(self, file_id, file_name):
+        request = self.drive().get_media(fileId=file_id)
+        file_handler = io.FileIO(file_name, 'wb')
+        return MediaIoBaseDownload(file_handler, request, chunksize=self.DOWNLOAD_CHUNK_SIZE)
+    
+    def upload(self, filepath, mime_type):
+        filename = filepath.split('/')[-1]
         file_metadata = {'name': filename}
-        media = MediaFileUpload(filepath,
-                                mimetype=mime_type,
-                                resumable=True,
-                                chunksize=UPLOAD_CHUNK_SIZE)
-        created_file = service.files().create(body=file_metadata,
-                                              media_body=media,
-                                              fields='id')
-        response = None
-        print("Uploading 0%", end='\r')
-        logger = Logger("Uploading")
-        while response is None:
-            status, response = created_file.next_chunk()
-            if status:
-                logger.send(status)
-        logger.close()
-        print("Uploaded 100% ")
-        print('File ID: %s\n' % response.get('id'))
-    except Exception as err:
-        print('An error occurred while uploading the file.')
-        print(err)
+        print('Uploading the file: %s' % filename)
+        media = MediaFileUpload(
+            filepath,
+            mimetype=mime_type,
+            resumable=True,
+            chunksize=self.UPLOAD_CHUNK_SIZE
+        )
+        return self.drive().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id'
+        )
 
-def read_argv():
-    """Read arguments"""
-    file_id = filename = list_all = download_last = None
-    try:
-        opts, _ = getopt.getopt(sys.argv[2:], "haln:i::", ["help", "all", "last", "name=", "id="])
-    except getopt.GetoptError:
-        print_help()
-    for opt, value in opts:
-        if opt in ("-h", "--help"):
-            print_help()
-        if opt in ("-a", "--all"):
-            list_all = True
-        elif opt in ("-l", "--last"):
-            download_last = True
-        elif opt in ("-i", "--id"):
-            file_id = value
-        elif opt in ("-n", "--name"):
-            filename = value
-        else:
-            assert False, "unhandled option"
-    return {'file_id': file_id,
-            'filename': filename,
-            'list_all': list_all,
-            'download_last': download_last}
 
-def print_help():
-    """Print help"""
-    print("Download examples:")
-    print("\tdownload --last")
-    print("\tdownload -l")
-    print("\tdownload some_file.gz")
-    print("\tdownload abcde123456fileid")
-    print("\tdownload --name some_file.gz")
-    print("\tdownload -n some_file.gz")
-    print("\tdownload --id abcde123456fileid")
-    print("\tdownload -i abcde123456fileid")
-    print("\nUpload examples:")
-    print("\tupload some_file.gz")
-    print("\nList examples:")
-    print("\tlist some_file")
-    print("\tlist --all")
-    print("\tlist -a")
-    sys.exit()
+class Command():
+    """Commands handle their own argument parser and use GoogleService to execute operations"""
+    TYPE = None
+    HELP = None
 
-def main():
-    """Main function. Entry point for the script"""
-    args_size = len(sys.argv)
-    if args_size < 3:
-        print_help()
-        return
+    def __init__(self, args):
+        self.args = args
+        self.google = GoogleService()
+    
+    @staticmethod
+    def add_to_subparser(subparsers):
+        """Configures ArgParser for the command"""
+        pass
 
-    func = sys.argv[1]
-    if func not in functions:
-        print('This function is not implemented yet.')
-        print_help()
-        return
+    def execute(self):
+        pass
 
-    service = init()
-    if service is None:
-        print('Failed to start service. Exiting...')
-        return
+    def is_service_started(self):
+        return self.google.is_valid()
+    
+    def conclude_operation_while_logging(self, operation, title):
+        logger = ProgressLogger(title)
+        try:
+            result = None
+            while not result:
+                status, result = operation.next_chunk()
+                if status:
+                    logger.send(status)
+            logger.close()
+            return result
+        except Exception as err:
+            print('An error happened while %s' % title)
+            print(err)
+            logger.close()
 
-    opt = read_argv()
-    if func == 'download':
-        # Downloads with the given file ID
-        if opt['file_id']:
-            download(service, opt['file_id'])
-        elif opt['download_last']:
-            download_last(service)
-        elif opt['filename']:
-            download_search(service, opt['filename'])
-        else:
-            # Tries to download with the argument as an ID
-            metadata = get_metadata(service, sys.argv[2])
-            if metadata:
-                download(service, sys.argv[2], metadata)
-            # If that fails, tries to use it as a name
-            else:
-                download_search(service, sys.argv[2])
-    if func == 'upload':
-        upload(service, sys.argv[2])
-    if func == 'list':
-        list_files(service, sys.argv[2], opt['list_all'])
+
+class Download(Command):
+    TYPE = "download"
+    HELP = "Download a file from Google Drive through ID or Filename. Use -l to download the last modified file."
+
+    @staticmethod
+    def add_to_subparser(subparsers):
+        parser = subparsers.add_parser(
+            Download.TYPE, 
+            help=Download.HELP
+        )
+        parser.set_defaults(command=Download)
+        parser.add_argument(
+            'file',
+            metavar='FILE',
+            nargs='*',
+            help="Name or ID of the file to Download. If not specified, will try as ID then as Name."
+        )
+        name_or_id = parser.add_mutually_exclusive_group()
+        name_or_id.add_argument(
+            '--name',
+            '-n',
+            help='Will use FILE as a filename to search',
+            action='store_true'
+        )
+        name_or_id.add_argument(
+            '--id',
+            '-i',
+            help='Will use FILE as a file ID to download',
+            action='store_true'
+        )
+        parser.add_argument(
+            '--last',
+            '-l',
+            help="Downloads the last modified file",
+            action='store_true'
+        )
+
+    def execute(self):
+        if self.args.last:
+            return self.download_last_uploaded_file()        
+        if not self.args.file:
+            print('Please inform the ID or name of the file you want to download. Exiting...')
+            return
+        self.file = " ".join(self.args.file)
+        if self.args.name:
+            return self.download_filename()        
+        if self.args.id:
+            return self.download_id()
+        return self.try_download_id_then_name()
+
+    def download_last_uploaded_file(self):
+        last_file = self.google.get_last_modified_file()
+        if not last_file:
+            print("Could not find any file")
+            return
+        self.download_from_metadata(last_file)
+
+    def download_filename(self):
+        file_found, _ = self.google.search_filename(self.file)
+        if not file_found:
+            print("Could not find any file that contains '%s' on the name" % self.file)
+            return
+        return self.download_from_metadata(file_found)
+    
+    def download_id(self):
+        file_found = self.google.get_file_metadata(self.file)
+        if not file_found:
+            print("Could not find file with '%s' as ID" % self.file)
+            return
+        return self.download_from_metadata(file_found)
+
+    def try_download_id_then_name(self):
+        file_id_found = self.google.get_file_metadata(self.file)
+        if file_id_found:
+            return self.download_from_metadata(file_id_found)
+        self.download_filename()
+
+    def download_from_metadata(self, metadata):
+        if metadata is None:
+            print('Could not find file to download')
+            return
+        file_name = metadata["name"] or "Unknown filename"
+        Utils.describe_file(metadata)
+        self.download(metadata["id"], file_name)
+    
+    def download(self, file_id, file_name):
+        try:
+            downloader = self.google.download(file_id, file_name)
+            print("Downloading 0%", end='\r')
+            self.conclude_operation_while_logging(downloader, "Downloading")
+            print("Downloaded 100% ")
+        except Exception as err:
+            print('An error happened while downloading the file.')
+            print(err)
+
+
+class Upload(Command):
+    TYPE = "upload"
+    HELP = "Upload a file to Google Drive. Accepts wildcards and can find the last modified file."
+
+    @staticmethod
+    def add_to_subparser(subparsers):
+        parser = subparsers.add_parser(
+            Upload.TYPE, 
+            help=Upload.HELP
+        )
+        parser.set_defaults(command=Upload)
+
+        parser.add_argument(
+            'file',
+            metavar='FILE',
+            nargs='+',
+            help="Path or filename of the file to be uploaded (accepts wildcards)"
+        )
+        parser.add_argument(
+            '--last',
+            '-l',
+            help="Uploads the last modified file if a wildcard is used",
+            action='store_true'
+        )
+
+    def execute(self):
+        self.set_filepath_for_first_arg()
+        if (self.args.last and len(self.args.file) > 1):
+            self.set_filepath_for_last_modified()
+        self.set_mimetype()
+        return self.upload()
+
+    def set_filepath_for_first_arg(self):
+        self.filepath = self.args.file[0]
+
+    def set_filepath_for_last_modified(self):
+        print('Found %s files' % len(self.args.file))
+        last_modified = self.find_last_modified_file(self.args.file)
+        self.filepath = last_modified
+
+    def find_last_modified_file(self, files, last_modified_file=None, last_time=None):
+        # TODO: Find a way to improve this
+        try:
+            if not files:
+                return last_modified_file
+            file = files.pop()
+            time = os.stat(file).st_mtime
+            if not last_time or time > last_time:
+                last_time = time
+                last_modified_file = file
+            return self.find_last_modified_file(files, last_modified_file, last_time)
+        except Exception as err:
+            self.filepath = None
+            print('An error occurred while handling the wildcard files.')
+            print(err)
+
+    def set_mimetype(self):
+        if not self.filepath:
+            return
+        guessed_type = mimetypes.guess_type(self.filepath, True)
+        if guessed_type is None:
+            print("Wasn't able to guess mimetype")
+            return
+        self.mime_type = guessed_type[0]
+        
+    def upload(self):
+        try:
+            uploader = self.google.upload(self.filepath, self.mime_type)
+            print("Uploading 0%", end='\r')
+            response = self.conclude_operation_while_logging(uploader, "Uploading")
+            if not response:
+                return
+            print("Uploaded 100% ")
+            print('File ID: %s\n' % response.get('id'))
+        except Exception as err:
+            print('An error occurred while uploading the file.')
+            print(err)
+
+
+class List(Command):
+    TYPE = "list"
+    HELP = "Browse all files or search on Google Drive."
+    FILES_PER_PAGE = 5
+
+    @staticmethod
+    def add_to_subparser(subparsers):
+        parser = subparsers.add_parser(
+            List.TYPE, 
+            help=List.HELP
+        )
+        parser.set_defaults(command=List)
+
+        parser.add_argument(
+            'file',
+            metavar='FILE',
+            nargs='?',
+            help="Name of the file to be searched (leave blank to see all files)"
+        )
+
+    def execute(self):
+        self.list_files()
+
+    def list_files(self):
+        files_found, next_page = self.search()
+        self.describe_files(files_found)
+        while next_page is not None:
+            if self.input_stop_next_page():
+                break
+            files_found, next_page = self.search(next_page)
+            self.describe_files(files_found)
+    
+    def search(self, next_page=None):
+        search_query = self.args.file
+        files_found, new_next_page = self.google.search_filename(
+            search_query,
+            self.FILES_PER_PAGE,
+            next_page
+        )
+        return files_found, new_next_page
+
+    def describe_files(self, files):
+        for file in files:
+            Utils.describe_file(file)
+
+    def input_stop_next_page(self):
+        # When Enter is pressed, the result is blank, thus false
+        return input(">>> Press Enter for the next results\n")
+
+
+class CommandParser():
+    """Starts the Commands' parsers and executes a command if the arguments are valid"""
+    COMMANDS = [Download, Upload, List]
+    NAME = "gdrive"
+    DESCRIPTION = "A script to interact with your Google Drive files"
+    
+    def __init__(self):
+        self.parser = ArgumentParser(
+            prog=self.NAME,
+            description=self.DESCRIPTION
+        )
+        subparsers = self.parser.add_subparsers()
+        for command in self.COMMANDS:
+            command.add_to_subparser(subparsers)
+        self.args = self.parser.parse_args()
+    
+    def execute_command(self):
+        if not self.is_command_valid():
+            print("Command is not valid")
+            return
+        command = self.build_command()
+        if not command.is_service_started():
+            print("Google Drive Service failed to start")
+            return
+        command.execute()
+    
+    def is_command_valid(self):
+        return self.args or self.args.command
+
+    def build_command(self):
+        return self.args.command(self.args)
 
 
 class ConflatedChannel:
@@ -323,7 +461,8 @@ class ConflatedChannel:
         """Close the channel. It will not receive new values."""
         self.__open = False
 
-class Logger():
+
+class ProgressLogger():
     """Logs progress from a worker thread."""
     def __init__(self, operation):
         self.__channel = ConflatedChannel()
@@ -358,22 +497,51 @@ class Logger():
     def __log_progress(self, status, previous_size, previous_time):
         """Print log from status."""
         progress = int(status.progress() * 100)
-        total_size = size_to_human_readable(status.total_size)
+        total_size = Utils.size_to_human_readable(status.total_size)
         current_size = status.resumable_progress
-        size = size_to_human_readable(current_size)
+        size = Utils.size_to_human_readable(current_size)
 
         current_time = time.time()
         timer = time.strftime("%H:%M:%S", time.gmtime(current_time - self.__start_time))
 
         diff_size = current_size - previous_size
         diff_time = current_time - previous_time
-        speed = size_to_human_readable(diff_size / diff_time)
+        speed = Utils.size_to_human_readable(diff_size / diff_time)
 
         estimated_time = (status.total_size - current_size) / diff_size / diff_time
         eta = time.strftime("%H:%M:%S", time.gmtime(estimated_time))
 
         print("%s %d%% - %s/%s - %s/s - %s - ETA: %s             " %
               (self.__operation, progress, size, total_size, speed, timer, eta), end='\r')
+
+
+class Utils:
+
+    @staticmethod
+    def describe_file(metadata):
+        """Print file metadata"""
+        print("Name: %s" % metadata["name"])
+        print("Owner: %s" % metadata["owners"][0]["displayName"])
+        if 'size' in metadata:
+            print("Size: %s" % Utils.size_to_human_readable(float(metadata["size"])))
+        if 'modifiedByMeTime' in metadata:
+            print("Modified by Me: %s" % metadata["modifiedByMeTime"])
+        else:
+            print("Modified: %s" % metadata["modifiedTime"])
+        print("ID: %s\n" % metadata["id"])
+
+    @staticmethod
+    def size_to_human_readable(num, suffix='B'):
+        """Converts bytes to a more human-readable metric"""
+        for unit in ['', 'K', 'M', 'G', 'T']:
+            if abs(num) < 1024.0:
+                return "%3.1f%s%s" % (num, unit, suffix)
+            num /= 1024.0
+        return None
+
+
+def main():
+    CommandParser().execute_command()
 
 if __name__ == '__main__':
     main()
