@@ -419,7 +419,7 @@ class CommandParser():
         command.execute()
     
     def is_command_valid(self):
-        return self.args or self.args.command
+        return self.args and self.args.command
 
     def build_command(self):
         return self.args.command(self.args)
