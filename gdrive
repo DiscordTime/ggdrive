@@ -35,13 +35,14 @@ class GoogleCredentials():
         return self.__creds
 
     def prepare_credentials(self):
-        if self.is_credentials_outdated():
+        if self.__creds and self.is_credentials_outdated():
             self.__creds.refresh(Request())
         else:
             self.create_credentials()
         self.save_credentials()
 
     def load_credentials(self):
+        self.__creds = None
         if os.path.exists(self.TOKEN_PATH):
             with open(self.TOKEN_PATH, 'rb') as token:
                 self.__creds = pickle.load(token)
@@ -53,8 +54,12 @@ class GoogleCredentials():
         return self.__creds.expired and self.__creds.refresh_token
 
     def create_credentials(self):
-        flow = InstalledAppFlow.from_client_secrets_file(self.CREDENTIALS_PATH, self.SCOPES)
-        self.__creds = flow.run_local_server(port=0)
+        if os.path.exists(self.CREDENTIALS_PATH):
+            flow = InstalledAppFlow.from_client_secrets_file(self.CREDENTIALS_PATH, self.SCOPES)
+            self.__creds = flow.run_local_server(port=0)
+        else: 
+            print('Credentials not found at %s' % self.CREDENTIALS_PATH)
+            exit()
 
     def save_credentials(self):
         with open(self.TOKEN_PATH, 'wb') as token:
@@ -410,7 +415,7 @@ class CommandParser():
     
     def execute_command(self):
         if not self.is_command_valid():
-            print("Command is not valid")
+            self.parser.print_help()
             return
         command = self.build_command()
         if not command.is_service_started():
@@ -419,7 +424,10 @@ class CommandParser():
         command.execute()
     
     def is_command_valid(self):
-        return self.args and self.args.command
+        try:
+            return self.args and self.args.command
+        except AttributeError:
+            return False
 
     def build_command(self):
         return self.args.command(self.args)
