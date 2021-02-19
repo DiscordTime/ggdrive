@@ -9,7 +9,7 @@ import mimetypes
 import threading
 import time
 from argparse import ArgumentParser
-from os.path import expanduser
+from os.path import expanduser, join
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
@@ -20,13 +20,16 @@ from googleapiclient.errors import HttpError
 class GoogleCredentials():
     """Handles the local Credentials file for the Google Drive API"""
     HOME = expanduser("~")
-    GDRIVE_PATH = HOME + '/.gdrive/'
-    CREDENTIALS_PATH = GDRIVE_PATH + 'credentials.json'
-    TOKEN_PATH = GDRIVE_PATH + 'token.pickle'
+    GDRIVE_PATH = join(HOME, '.gdrive')
+    CREDENTIALS_PATH = join(GDRIVE_PATH, 'credentials.json')
+    TOKEN_PATH = join(GDRIVE_PATH, 'token.pickle')
     SCOPES = [
         'https://www.googleapis.com/auth/drive',
         'https://www.googleapis.com/auth/drive.metadata'
     ]
+
+    def __init__(self):
+        self.__creds = None
 
     def build(self):
         self.load_credentials()
@@ -57,7 +60,7 @@ class GoogleCredentials():
         if os.path.exists(self.CREDENTIALS_PATH):
             flow = InstalledAppFlow.from_client_secrets_file(self.CREDENTIALS_PATH, self.SCOPES)
             self.__creds = flow.run_local_server(port=0)
-        else: 
+        else:
             print('Credentials not found at %s' % self.CREDENTIALS_PATH)
             exit()
 
@@ -74,7 +77,7 @@ class GoogleService():
     def __init__(self):
         creds = GoogleCredentials().build()
         self.__google = build('drive', 'v3', credentials=creds)
-    
+
     def is_valid(self):
         return self.__google is not None
 
@@ -105,7 +108,7 @@ class GoogleService():
             pageToken=page_token
         ).execute()
         files_found = search.get('files', [])
-        if files_found and page_size is 1:
+        if files_found and page_size == 1:
             return files_found[0], None
         next_page = search.get('nextPageToken', None)
         return files_found, next_page
@@ -118,7 +121,7 @@ class GoogleService():
         request = self.drive().get_media(fileId=file_id)
         file_handler = io.FileIO(file_name, 'wb')
         return MediaIoBaseDownload(file_handler, request, chunksize=self.DOWNLOAD_CHUNK_SIZE)
-    
+
     def upload(self, filepath, mime_type):
         filename = filepath.split('/')[-1]
         file_metadata = {'name': filename}
@@ -144,7 +147,7 @@ class Command():
     def __init__(self, args):
         self.args = args
         self.google = GoogleService()
-    
+
     @staticmethod
     def add_to_subparser(subparsers):
         """Configures ArgParser for the command"""
@@ -155,7 +158,7 @@ class Command():
 
     def is_service_started(self):
         return self.google.is_valid()
-    
+
     def conclude_operation_while_logging(self, operation, title):
         logger = ProgressLogger(title)
         try:
@@ -179,7 +182,7 @@ class Download(Command):
     @staticmethod
     def add_to_subparser(subparsers):
         parser = subparsers.add_parser(
-            Download.TYPE, 
+            Download.TYPE,
             help=Download.HELP
         )
         parser.set_defaults(command=Download)
@@ -211,13 +214,13 @@ class Download(Command):
 
     def execute(self):
         if self.args.last:
-            return self.download_last_uploaded_file()        
+            return self.download_last_uploaded_file()
         if not self.args.file:
             print('Please inform the ID or name of the file you want to download. Exiting...')
             return
         self.file = " ".join(self.args.file)
         if self.args.name:
-            return self.download_filename()        
+            return self.download_filename()
         if self.args.id:
             return self.download_id()
         return self.try_download_id_then_name()
@@ -235,7 +238,7 @@ class Download(Command):
             print("Could not find any file that contains '%s' on the name" % self.file)
             return
         return self.download_from_metadata(file_found)
-    
+
     def download_id(self):
         file_found = self.google.get_file_metadata(self.file)
         if not file_found:
@@ -256,7 +259,7 @@ class Download(Command):
         file_name = metadata["name"] or "Unknown filename"
         Utils.describe_file(metadata)
         self.download(metadata["id"], file_name)
-    
+
     def download(self, file_id, file_name):
         try:
             downloader = self.google.download(file_id, file_name)
@@ -275,7 +278,7 @@ class Upload(Command):
     @staticmethod
     def add_to_subparser(subparsers):
         parser = subparsers.add_parser(
-            Upload.TYPE, 
+            Upload.TYPE,
             help=Upload.HELP
         )
         parser.set_defaults(command=Upload)
@@ -332,7 +335,7 @@ class Upload(Command):
             print("Wasn't able to guess mimetype")
             return
         self.mime_type = guessed_type[0]
-        
+
     def upload(self):
         try:
             uploader = self.google.upload(self.filepath, self.mime_type)
@@ -355,7 +358,7 @@ class List(Command):
     @staticmethod
     def add_to_subparser(subparsers):
         parser = subparsers.add_parser(
-            List.TYPE, 
+            List.TYPE,
             help=List.HELP
         )
         parser.set_defaults(command=List)
@@ -374,11 +377,14 @@ class List(Command):
         files_found, next_page = self.search()
         self.describe_files(files_found)
         while next_page is not None:
-            if self.input_stop_next_page():
-                break
-            files_found, next_page = self.search(next_page)
-            self.describe_files(files_found)
-    
+            try:
+                if self.input_stop_next_page():
+                    break
+                files_found, next_page = self.search(next_page)
+                self.describe_files(files_found)
+            except KeyboardInterrupt:
+                return
+
     def search(self, next_page=None):
         search_query = self.args.file
         files_found, new_next_page = self.google.search_filename(
@@ -402,7 +408,7 @@ class CommandParser():
     COMMANDS = [Download, Upload, List]
     NAME = "gdrive"
     DESCRIPTION = "A script to interact with your Google Drive files"
-    
+
     def __init__(self):
         self.parser = ArgumentParser(
             prog=self.NAME,
@@ -412,7 +418,7 @@ class CommandParser():
         for command in self.COMMANDS:
             command.add_to_subparser(subparsers)
         self.args = self.parser.parse_args()
-    
+
     def execute_command(self):
         if not self.is_command_valid():
             self.parser.print_help()
@@ -422,7 +428,7 @@ class CommandParser():
             print("Google Drive Service failed to start")
             return
         command.execute()
-    
+
     def is_command_valid(self):
         try:
             return self.args and self.args.command
