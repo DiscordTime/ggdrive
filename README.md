@@ -12,44 +12,61 @@ A simple integration with Google Drive so we can upload and download files direc
 
 We created a `requirements.txt` where you can execute the following to install the needed libs:
 
-`pip install --upgrade -r requirements.txt`
-
+```sh
+pip install --upgrade -r requirements.txt
+```
 or
-
-`python -m pip install --upgrade -r requirements.txt`
+```sh
+python -m pip install --upgrade -r requirements.txt
+```
 
 ### **2. Configuring**
 
 1. Clone this repo
 
- `git clone git@github.com:DiscordTime/gdrive-manager.git`
-
+ ```sh
+ git clone git@github.com:DiscordTime/gdrive-manager.git
+ ```
  or
-
- `git clone https://github.com/DiscordTime/gdrive-manager.git`
+ ```sh
+ git clone https://github.com/DiscordTime/gdrive-manager.git
+ ```
 
  2. If the script gdrive doesn't have execute permission, give it to it.
 
- `chmod +x gdrive`
+ ```sh
+ chmod +x gdrive
+ ```
 
  3. Go to your home folder and create a directory called `.gdrive` and put your `credentials.json` file in there.
 
  4. You can add this repo folder to you path so you can execute gdrive from anywhere on your terminal. Open your `.bashrc` or similars and add one of the following options:
 
- `export PATH=$PATH:'<path-to-repo-folder>'`
-
- `alias gdrive='<path-to-repo-folder>/gdrive`
+ ```sh
+ export PATH=$PATH:'<path-to-repo-folder>'
+ ```
+or
+ ```sh
+ alias gdrive='<path-to-repo-folder>/gdrive
+ ```
 
 ### **3. Usage**
 
 Available functions:
 
 1. Upload
-
-`gdrive upload <file-to-upload>`
+```sh
+gdrive upload <file-to-upload>
+```
 
 2. Download
+```sh
+gdrive download <fileId-to-download>
+```
 
-`gdrive download <fileId-to-download>`
+3. List
+```sh
+gdrive list
+```
 
 The first time you're executing this, a Google page will open and ask for your account so it can integrate with your Google Drive account and then it will ask if you give permission to the app. Once you agree, you're all set.
