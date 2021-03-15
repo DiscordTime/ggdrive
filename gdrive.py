@@ -522,7 +522,7 @@ class ProgressLogger():
         diff_time = current_time - previous_time
         speed = Utils.size_to_human_readable(diff_size / diff_time)
 
-        estimated_time = (status.total_size - current_size) / diff_size / diff_time
+        estimated_time = (status.total_size - current_size) / (diff_size / diff_time)
         eta = time.strftime("%H:%M:%S", time.gmtime(estimated_time))
 
         print("%s %d%% - %s/%s - %s/s - %s - ETA: %s             " %
