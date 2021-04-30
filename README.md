@@ -17,7 +17,7 @@ pip install --upgrade -r requirements.txt
 ```
 or
 ```sh
-python -m pip install --upgrade -r requirements.txt
+python3 -m pip install --upgrade -r requirements.txt
 ```
 
 ### **2. Configuring**
@@ -54,19 +54,65 @@ or
 
 Available functions:
 
-1. Upload
+#### 1. Upload
+
+```sh
+gdrive upload --help
+```
+
 ```sh
 gdrive upload <file-to-upload>
 ```
 
-2. Download
+#### 2. Download
 ```sh
-gdrive download <fileId-to-download>
+gdrive download --help
 ```
 
-3. List
+You can download a file passing either the ***id*** or the ***name*** of your file
+```sh
+gdrive download <(fileId/filename)-to-download>
+```
+
+To explicitly download via the ***id***, use one of the following:
+
+```sh
+gdrive download -i <id-of-file-to-download>
+gdrive download --id <id-of-file-to-download>
+```
+
+To download a file via its name, use one of the following:
+```sh
+gdrive download -n <name-of-file-to-download>
+gdrive download --name <name-of-file-to-download>
+```
+
+If you're sure that the file that you want to download is the last one that was modified, just use one of the following:
+```sh
+gdrive download -l
+gdrive download --last
+```
+
+If the file is a compressed one, you can try extracting it as soon as it finished downloading by using the ***extract*** option (This option is to be used in combination with one of the above):
+
+```sh
+gdrive download -le
+gdrive download -ei <id-of-file-to-download>
+gdrive download -en <name-of-file-to-download>
+gdrive download --last --extract
+```
+
+**NOTE**
+
+Important note: The ***extract*** function needs some extra programs to execute. By default, we pré-defined some of this programs and options. This is thefined in the ***extractor.py*** file and can be changed directly there, if you want it. We wish to improve and give users the possibility to choose which program they want to use to extract a file.
+
+#### 3. List
 ```sh
 gdrive list
+```
+
+```sh
+gdrive list --help
 ```
 
 The first time you're executing this, a Google page will open and ask for your account so it can integrate with your Google Drive account and then it will ask if you give permission to the app. Once you agree, you're all set.
