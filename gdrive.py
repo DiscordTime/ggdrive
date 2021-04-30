@@ -17,6 +17,8 @@ from googleapiclient.http import MediaIoBaseDownload
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
 
+from extractor import Extractor
+
 class GoogleCredentials():
     """Handles the local Credentials file for the Google Drive API"""
     HOME = expanduser("~")
@@ -177,7 +179,7 @@ class Command():
 
 class Download(Command):
     TYPE = "download"
-    HELP = "Download a file from Google Drive through ID or Filename. Use -l to download the last modified file."
+    HELP = "Download a file from Google Drive through ID or Filename."
 
     @staticmethod
     def add_to_subparser(subparsers):
@@ -194,78 +196,92 @@ class Download(Command):
         )
         name_or_id = parser.add_mutually_exclusive_group()
         name_or_id.add_argument(
-            '--name',
             '-n',
+            '--name',
             help='Will use FILE as a filename to search',
             action='store_true'
         )
         name_or_id.add_argument(
-            '--id',
             '-i',
+            '--id',
             help='Will use FILE as a file ID to download',
             action='store_true'
         )
         parser.add_argument(
-            '--last',
             '-l',
+            '--last',
             help="Downloads the last modified file",
+            action='store_true'
+        )
+        parser.add_argument(
+            '-e',
+            '--extract',
+            help='Tries to extract the downloaded file',
             action='store_true'
         )
 
     def execute(self):
+        extract = self.args.extract
         if self.args.last:
-            return self.download_last_uploaded_file()
+            return self.download_last_uploaded_file(extract)
         if not self.args.file:
             print('Please inform the ID or name of the file you want to download. Exiting...')
             return
         self.file = " ".join(self.args.file)
         if self.args.name:
-            return self.download_filename()
+            return self.download_filename(extract)
         if self.args.id:
-            return self.download_id()
-        return self.try_download_id_then_name()
+            return self.download_id(extract)
+        return self.try_download_id_then_name(extract)
 
-    def download_last_uploaded_file(self):
+    def download_last_uploaded_file(self, extract):
         last_file = self.google.get_last_modified_file()
         if not last_file:
             print("Could not find any file")
             return
-        self.download_from_metadata(last_file)
+        self.download_from_metadata(last_file, extract)
 
-    def download_filename(self):
+    def download_filename(self, extract):
         file_found, _ = self.google.search_filename(self.file)
         if not file_found:
             print("Could not find any file that contains '%s' on the name" % self.file)
             return
-        return self.download_from_metadata(file_found)
+        return self.download_from_metadata(file_found, extract)
 
-    def download_id(self):
+    def download_id(self, extract):
         file_found = self.google.get_file_metadata(self.file)
         if not file_found:
             print("Could not find file with '%s' as ID" % self.file)
             return
-        return self.download_from_metadata(file_found)
+        return self.download_from_metadata(file_found, extract)
 
-    def try_download_id_then_name(self):
+    def try_download_id_then_name(self, extract):
         file_id_found = self.google.get_file_metadata(self.file)
         if file_id_found:
-            return self.download_from_metadata(file_id_found)
-        self.download_filename()
+            return self.download_from_metadata(file_id_found, extract)
+        return self.download_filename(extract)
 
-    def download_from_metadata(self, metadata):
+    def download_from_metadata(self, metadata, extract):
         if metadata is None:
             print('Could not find file to download')
             return
         file_name = metadata["name"] or "Unknown filename"
         Utils.describe_file(metadata)
-        self.download(metadata["id"], file_name)
+        downloaded_file = self.download(metadata["id"], file_name)
+        if not downloaded_file:
+            return None
+        if extract:
+            Extractor().extract(file_name)
+        return downloaded_file
+
 
     def download(self, file_id, file_name):
         try:
             downloader = self.google.download(file_id, file_name)
             print("Downloading 0%", end='\r')
-            self.conclude_operation_while_logging(downloader, "Downloading")
+            result = self.conclude_operation_while_logging(downloader, "Downloading")
             print("Downloaded 100% ")
+            return result
         except Exception as err:
             print('An error happened while downloading the file.')
             print(err)
