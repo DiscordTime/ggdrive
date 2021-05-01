@@ -104,7 +104,35 @@ gdrive download --last --extract
 
 **NOTE**
 
-Important note: The ***extract*** function needs some extra programs to execute. By default, we pré-defined some of this programs and options. This is thefined in the ***extractor.py*** file and can be changed directly there, if you want it. We wish to improve and give users the possibility to choose which program they want to use to extract a file.
+The ***extract*** function needs some extra programs to execute. We tried to implement a mechanism that will try to guess the extension of the file you're downloading and use the program you define to extract it. So, first time you try to download a file of a certain type, when it's time to extract the file, our program will ask you which program you want to choose. After that, if you download a file with this same extension, it will extract it automatically (if you added the ***--extract*** option).
+
+This configurations are located with your other files that we need in the *.gdrive* in your *HOME* directory. The file is called ***data_config.json***
+
+Sample
+```json
+{
+  "configs": [
+    {
+      "ext": "application/x-tar",
+      "encoding": "gzip",
+      "prog": "tar",
+      "attrs": "xzvf"
+    },
+    {
+      "ext": null,
+      "encoding": "gzip",
+      "prog": "gunzip",
+      "attrs": null
+    },
+    {
+      "ext": "application/x-tar",
+      "encoding": null,
+      "prog": "tar",
+      "attrs": "xvf"
+    }
+  ]
+}
+```
 
 #### 3. List
 ```sh

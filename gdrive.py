@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 
 """A script to interact with your Google Drive files using the terminal"""
-
 import os
 import io
 import pickle
 import mimetypes
 import threading
 import time
+import config
+import extractor
 from argparse import ArgumentParser
-from os.path import expanduser, join
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
@@ -17,14 +17,9 @@ from googleapiclient.http import MediaIoBaseDownload
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
 
-from extractor import Extractor
 
 class GoogleCredentials():
     """Handles the local Credentials file for the Google Drive API"""
-    HOME = expanduser("~")
-    GDRIVE_PATH = join(HOME, '.gdrive')
-    CREDENTIALS_PATH = join(GDRIVE_PATH, 'credentials.json')
-    TOKEN_PATH = join(GDRIVE_PATH, 'token.pickle')
     SCOPES = [
         'https://www.googleapis.com/auth/drive',
         'https://www.googleapis.com/auth/drive.metadata'
@@ -48,8 +43,8 @@ class GoogleCredentials():
 
     def load_credentials(self):
         self.__creds = None
-        if os.path.exists(self.TOKEN_PATH):
-            with open(self.TOKEN_PATH, 'rb') as token:
+        if os.path.exists(config.TOKEN_PATH):
+            with open(config.TOKEN_PATH, 'rb') as token:
                 self.__creds = pickle.load(token)
 
     def is_credentials_valid(self):
@@ -59,15 +54,15 @@ class GoogleCredentials():
         return self.__creds.expired and self.__creds.refresh_token
 
     def create_credentials(self):
-        if os.path.exists(self.CREDENTIALS_PATH):
-            flow = InstalledAppFlow.from_client_secrets_file(self.CREDENTIALS_PATH, self.SCOPES)
+        if os.path.exists(config.CREDENTIALS_PATH):
+            flow = InstalledAppFlow.from_client_secrets_file(config.CREDENTIALS_PATH, self.SCOPES)
             self.__creds = flow.run_local_server(port=0)
         else:
-            print('Credentials not found at %s' % self.CREDENTIALS_PATH)
+            print('Credentials not found at %s' % config.CREDENTIALS_PATH)
             exit()
 
     def save_credentials(self):
-        with open(self.TOKEN_PATH, 'wb') as token:
+        with open(config.TOKEN_PATH, 'wb') as token:
             pickle.dump(self.__creds, token)
 
 
@@ -271,9 +266,8 @@ class Download(Command):
         if not downloaded_file:
             return None
         if extract:
-            Extractor().extract(file_name)
+            extractor.extract(file_name)
         return downloaded_file
-
 
     def download(self, file_id, file_name):
         try:
