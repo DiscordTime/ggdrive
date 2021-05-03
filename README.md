@@ -1,13 +1,13 @@
 # gdrive-manager
-A simple integration with Google Drive so we can upload and download files directly from the terminal.
+A command-line script for Google Drive, for downloading and uploading files directly from the terminal.
 
 ## **How to use**
 
 ### **1. Pre-requisites**
 
-### Important note: It's important to say that this needs credentials that would indentify your application. That's what gives the information to the user so they can authorize or not your application to upload and download. At this moment, we're not providing the credentials.json needed for this to work, so if you want to use this code, you need to go to [Google's Developer Console](https://console.developers.google.com/), create a project and create the OAuth credentials for it. You can download the credentials.json and use it here.
+### Important note: This project requires Google API credentials. That credential file enables the use of Google APIs by this application, and allows the user to login and allow (or deny) the application to access the user's Google Drive files. At this moment, we're not providing the credentials.json needed for this to work, so if you want to use this code, you need to go to [Google's Developer Console](https://console.developers.google.com/), create a project, and create the OAuth credentials for it. You can download the credentials.json and use it here.
 
-1. Python 3
+1. Python 3.6 (at least) 
 2. Google Client Library
 
 We created a `requirements.txt` where you can execute the following to install the needed libs:
@@ -32,7 +32,7 @@ python3 -m pip install --upgrade -r requirements.txt
  git clone https://github.com/DiscordTime/gdrive-manager.git
  ```
 
- 2. If the script gdrive doesn't have execute permission, give it to it.
+ 2. If the script gdrive doesn't have execution permission, give it to it.
 
  ```sh
  chmod +x gdrive
@@ -40,7 +40,7 @@ python3 -m pip install --upgrade -r requirements.txt
 
  3. Go to your home folder and create a directory called `.gdrive` and put your `credentials.json` file in there.
 
- 4. You can add this repo folder to you path so you can execute gdrive from anywhere on your terminal. Open your `.bashrc` or similars and add one of the following options:
+ 4. You can add this repo folder to you path, so you can execute gdrive from anywhere on your terminal. Open your `.bashrc` or similar and add one of the following options:
 
  ```sh
  export PATH=$PATH:'<path-to-repo-folder>'
@@ -69,7 +69,7 @@ gdrive upload <file-to-upload>
 gdrive download --help
 ```
 
-You can download a file passing either the ***id*** or the ***name*** of your file
+You can download a file passing either the ***id***, or the ***name*** of your file
 ```sh
 gdrive download <(fileId/filename)-to-download>
 ```
@@ -104,9 +104,9 @@ gdrive download --last --extract
 
 **NOTE**
 
-The ***extract*** function needs some extra programs to execute. We tried to implement a mechanism that will try to guess the extension of the file you're downloading and use the program you define to extract it. So, first time you try to download a file of a certain type, when it's time to extract the file, our program will ask you which program you want to choose. After that, if you download a file with this same extension, it will extract it automatically (if you added the ***--extract*** option).
+The ***extract*** function needs some extra programs to execute. We implement a mechanism that tries to guess the extension of the file you're downloading and use the program you define to extract it. So, the first time you try to download a file of a certain type, when it's time to extract the file, our program will ask you which program you want to choose. After that, if you download a file with this same extension, it will extract it automatically (if you added the ***--extract*** option).
 
-This configurations are located with your other files that we need in the *.gdrive* in your *HOME* directory. The file is called ***data_config.json***
+Those configurations are located with your other files that we need in the *.gdrive* in your *HOME* directory. The file is called ***data_config.json***
 
 Sample
 ```json
@@ -143,4 +143,4 @@ gdrive list
 gdrive list --help
 ```
 
-The first time you're executing this, a Google page will open and ask for your account so it can integrate with your Google Drive account and then it will ask if you give permission to the app. Once you agree, you're all set.
+The first time you're executing this, a Google page will open and ask for your account, so it can integrate with your Google Drive account, and then it will ask if you give permission to the app. Once you agree, you're all set.
