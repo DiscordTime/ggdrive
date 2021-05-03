@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-from argparse import ArgumentParser
-from json import JSONDecodeError
-import config
 import json
-import logger
 import mimetypes
 import os
+from argparse import ArgumentParser
+from json import JSONDecodeError
+
+from modules import logger, config
 
 _attrs_str = 'attrs'
 _configs_str = 'configs'
@@ -25,7 +25,7 @@ def extract(filename):
         print("Could not guess filetype. Cannot extract")
         return None
     config_result = _check_extension(ext, encoding)
-    logger.logd('ExtractorConfig:', config_result)
+    logger.d('ExtractorConfig:', config_result)
     if config_result[_error_str]:
         print("Cannot extract at this moment")
         return None
@@ -33,21 +33,21 @@ def extract(filename):
     result = config_result[_result_str]
     if not result[_result_str]:
         # Need to create file
-        logger.logd("create file for configurations")
+        logger.d("create file for configurations")
         _create_configuration_file()
 
     prog_config = result[_prog_str]
     if not prog_config:
         # Add configuration for this extension
-        logger.logd('add config for this extension', ext, encoding)
+        logger.d('add config for this extension', ext, encoding)
         print('We are going to need to add a new config for', filename)
         prog_config = _configure_new_item(ext, encoding)
         if not prog_config:
             print('Could not extract for this type of file at this moment.')
-            logger.logd('User did not enter a new configuration')
+            logger.d('User did not enter a new configuration')
             return
 
-    logger.logd('Found config:', prog_config)
+    logger.d('Found config:', prog_config)
 
     try:
         prog_command = prog_config[_prog_str]
@@ -72,32 +72,32 @@ def _response_builder(error_obj, result_obj, message):
 
 
 def _check_extension(ext, encoding):
-    logger.logd(f'check_extension, (ext, encoding) = ({ext},{encoding})')
+    logger.d(f'check_extension, (ext, encoding) = ({ext},{encoding})')
     if not ext and not encoding:
         msg = 'Invalid extension and encoding'
-        logger.logd(msg)
+        logger.d(msg)
         err = _error_builder(1, msg)
         return _response_builder(err, None, err[_message_str])
 
     if not os.path.isfile(config.EXTRACTOR_CONFIG_FILE):
-        logger.logd('No configuration file', config.EXTRACTOR_CONFIG_FILE)
+        logger.d('No configuration file', config.EXTRACTOR_CONFIG_FILE)
         return _response_builder(None, _result_builder(False, None), 'No configuration file')
 
     with open(config.EXTRACTOR_CONFIG_FILE, 'r') as f:
         try:
             json_data = json.load(f)
         except JSONDecodeError:
-            logger.logd('Could not load configurations')
+            logger.d('Could not load configurations')
             err = _error_builder(2, 'File is not json')
             return _response_builder(err, None, err[_message_str])
 
-    logger.logd(f'file content: {json_data}')
+    logger.d(f'file content: {json_data}')
 
     try:
         configs = json_data[_configs_str]
     except KeyError:
-        msg = 'File with different json object than expected' 
-        logger.logd(msg)
+        msg = 'File with different json object than expected'
+        logger.d(msg)
         err = _error_builder(3, msg)
         return _response_builder(err, None, msg)
 
@@ -127,13 +127,13 @@ def _create_configuration_file():
 
 
 def _add_config(extension, encoding, prog, attrs):
-    logger.logd('add_config called:', extension, encoding, prog, attrs)
+    logger.d('add_config called:', extension, encoding, prog, attrs)
 
     with open(config.EXTRACTOR_CONFIG_FILE, 'r') as f:
         try:
             json_data = json.load(f)
         except JSONDecodeError:
-            logger.logd('add_config exception')
+            logger.d('add_config exception')
             print('Could not add a new configuration to your file')
             return None
 
@@ -173,7 +173,7 @@ class _Program:
         if not attrs:
             attrs = ''
         full_command = self._prog + ' ' + attrs + ' ' + filename
-        logger.logd('execute:', full_command)
+        logger.d('execute:', full_command)
         os.system(full_command)
 
 
