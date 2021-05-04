@@ -93,20 +93,24 @@ class GoogleService:
         if filename is not None:
             # Could also be name = '%s' for an exact search
             query = "name contains '%s'" % filename
-        fields = ('nextPageToken, files/id, files/name, files/size, '
-                  'files/modifiedTime, files/modifiedByMeTime, files/owners')
-        search = self.drive().list(
-            q=query,
-            orderBy='modifiedByMeTime desc',
-            fields=fields,
-            pageSize=page_size,
-            pageToken=page_token
-        ).execute(http=self.create_http())
-        files_found = search.get('files', [])
-        if files_found and page_size == 1:
-            return files_found[0], None
-        next_page = search.get('nextPageToken', None)
-        return files_found, next_page
+        fields = ','.join(
+            ('nextPageToken',) +
+            tuple(map(lambda x: 'files/' + x, ('id', 'name', 'size', 'modifiedTime', 'modifiedByMeTime', 'owners')))
+        )
+        http = self.create_http()
+        while True:
+            search = self.drive().list(
+                q=query,
+                orderBy='modifiedByMeTime desc',
+                fields=fields,
+                pageSize=page_size,
+                pageToken=page_token
+            ).execute(http=http)
+            files_found = search.get('files', [])
+            page_token = search.get('nextPageToken', None)
+            yield files_found
+            if page_token is None:
+                break
 
     def get_last_modified_file(self):
         file, _ = self.search_filename(None)

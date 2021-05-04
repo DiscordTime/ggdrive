@@ -1,6 +1,7 @@
 import mimetypes
 import os
 import sys
+from typing import Callable, Any
 
 from modules import logger
 
@@ -41,22 +42,33 @@ def guess_mimetype(filepath):
     return guessed_type
 
 
-def describe_files(*metadatas):
-    """Print files metadata"""
+def files_descriptions(*metadata):
+    """Returns formatted string representations of files metadata"""
 
-    def describe():
-        print("Name: %s" % metadata["name"])
-        print("Owner: %s" % metadata["owners"][0]["displayName"])
-        if 'size' in metadata:
-            print("Size: %s" % to_human_readable(float(metadata["size"])))
-        if 'modifiedByMeTime' in metadata:
-            print("Modified by Me: %s" % metadata["modifiedByMeTime"])
-        else:
-            print("Modified: %s" % metadata["modifiedTime"])
-        print("ID: %s\n" % metadata["id"])
+    def description(m):
+        by_me = 'modifiedByMeTime' in m
+        modified_by = m['modifiedByMeTime' if by_me else 'modifiedTime']
+        desc = [
+            f"Name: {m['name']}",
+            f"Owner: {m['owners'][0]['displayName']}",
+            "Size: {0}".format(*to_human_readable(float(m['size']))) if 'size' in m else None,
+            "Modified{0}: {1}".format(" by me" if by_me else "", modified_by),
+            f"ID: {m['id']}"
+        ]
+        return [d for d in desc if d is not None]
 
-    for metadata in metadatas:
-        describe()
+    return [description(m) for m in metadata]
+
+
+def print_files_descriptions(*descriptions, line_sep='\n', desc_sep='\n'):
+    for desc in descriptions:
+        for line in desc:
+            print(line, end=line_sep)
+        print(end=desc_sep)
+
+
+def describe_files(*metadata, line_sep='\n', desc_sep='\n'):
+    print_files_descriptions(files_descriptions(*metadata), line_sep, desc_sep)
 
 
 def current_python_version():
@@ -127,3 +139,18 @@ def copy_file_contents(dest: str, *srcs: str):
             with open(src, 'rb') as partial_file:
                 logger.d(f"Writing '{partial_file.name}' into '{dest}'")
                 final_file.write(partial_file.read())
+
+
+def delete_lines(lines: int = 1):
+    for _ in range(lines):
+        print('\x1b[2K', end='\n')
+
+
+def move_cursor_up(lines: int = 1):
+    for _ in range(lines):
+        print('\x1b[1A', end='\r')
+
+
+def for_lines(lines: int = 1, *funcs: Callable[[int], Any]):
+    for func in funcs:
+        func(lines)

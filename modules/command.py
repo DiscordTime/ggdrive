@@ -4,7 +4,8 @@ from modules import extractor, logger, config
 from modules.chunks import Chunks
 from modules.googleservice import GoogleService
 from modules.progresslogger import ProgressLogger, Progress
-from modules.util import describe_files, current_is_python36, find_last_modified_file, guess_mimetype
+from modules.util import current_is_python36, find_last_modified_file, guess_mimetype, move_cursor_up, \
+    delete_lines, for_lines, files_descriptions, print_files_descriptions, describe_files
 
 
 class Command:
@@ -277,25 +278,17 @@ class List(Command):
         self.list_files()
 
     def list_files(self):
-        files_found, next_page = self.search()
-        describe_files(*files_found)
-        while next_page is not None:
-            try:
-                if input(">>> Press Enter for the next results\n"):
-                    break
-                files_found, next_page = self.search(next_page)
-                describe_files(*files_found)
-            except KeyboardInterrupt:
-                return
+        num_printed_lines = 0
+        for files_found in self.search():
+            for_lines(num_printed_lines, move_cursor_up, delete_lines, move_cursor_up)
+            descs = files_descriptions(*files_found)
+            print_files_descriptions(*descs)
+            if input(">>> Press Enter for the next results\n"):
+                break
+            num_printed_lines = len(descs) + sum(map(len, descs)) + 2  # last 2 lines are input text + newline
 
-    def search(self, next_page=None):
-        search_query = self.args.file
-        files_found, new_next_page = self.google.search_filename(
-            search_query,
-            self.FILES_PER_PAGE,
-            next_page
-        )
-        return files_found, new_next_page
+    def search(self):
+        yield from self.google.search_filename(self.args.file, self.FILES_PER_PAGE)
 
 
 class CommandParser:
