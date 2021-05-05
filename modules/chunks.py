@@ -10,7 +10,8 @@ from typing import Callable, Tuple
 from modules import logger
 from modules.backports import to_thread_compat
 from modules.progresslogger import Progress
-from modules.util import current_is_python36, create_dir, remove_dir, remove_file, copy_file_contents
+from modules.util import current_is_python36, create_dir, remove_dir, remove_file, copy_file_contents, python38, \
+    current_python_version
 
 
 @dataclass
@@ -173,7 +174,7 @@ class Chunks:
     async def await_it(self):
         await asyncio.gather(self.join_partial_files_task)
         logger.d("Chunks finished work, shutting down executor.")
-        if current_is_python36():
+        if current_python_version() <= python38():
             self.executor.shutdown()
         else:
             self.executor.shutdown(cancel_futures=True)
@@ -219,7 +220,7 @@ class Chunks:
         for chunk in self.chunks:
             chunk.cancel()
         self.join_partial_files_task.cancel()
-        if current_is_python36():
+        if current_python_version() <= python38():
             self.executor.shutdown()
         else:
             self.executor.shutdown(cancel_futures=True)

@@ -99,6 +99,18 @@ def python36():
     return 3, 6
 
 
+def python37():
+    return 3, 7
+
+
+def python38():
+    return 3, 8
+
+
+def python39():
+    return 3, 9
+
+
 def current_is_python36():
     return python36() == current_python_version()
 
