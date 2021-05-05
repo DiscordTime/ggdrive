@@ -216,6 +216,7 @@ class Chunks:
         return all(map(lambda task: task.done(), self.all_tasks))
 
     def cancel(self):
+        print("Cleaning up...")
         logger.d(f"Cancelling task for all chunks")
         for chunk in self.chunks:
             chunk.cancel()
