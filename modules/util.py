@@ -68,7 +68,7 @@ def print_files_descriptions(*descriptions, line_sep='\n', desc_sep='\n'):
 
 
 def describe_files(*metadata, line_sep='\n', desc_sep='\n'):
-    print_files_descriptions(files_descriptions(*metadata), line_sep, desc_sep)
+    print_files_descriptions(*files_descriptions(*metadata), line_sep=line_sep, desc_sep=desc_sep)
 
 
 def current_python_version():

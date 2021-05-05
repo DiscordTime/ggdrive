@@ -113,8 +113,10 @@ class GoogleService:
                 break
 
     def get_last_modified_file(self):
-        file, _ = self.search_filename(None)
-        return file
+        try:
+            return next(self.search_filename())[0]
+        except KeyError:
+            return None
 
     def get_file_downloader(self, metadata):
         def file_downloader(start: int, end: int) -> bytes:
