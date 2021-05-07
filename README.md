@@ -1,13 +1,18 @@
 <p align="center">
-    <a href="https://github.com/DiscordTime/ggdrive/actions/workflows/main.yml" alt="CI">
-        <img src="https://github.com/DiscordTime/ggdrive/actions/workflows/main.yml/badge.svg" /></a>
-    <img alt="PyPI - Python Version" src="https://img.shields.io/pypi/pyversions/ggdrive"> 
-    <img alt="Code size" src="https://img.shields.io/github/languages/code-size/DiscordTime/ggdrive">
-    <img alt="License" src="https://img.shields.io/pypi/l/ggdrive">
-    <img alt="Version" src="https://img.shields.io/pypi/v/ggdrive">
+    <a href="https://github.com/DiscordTime/ggdrive/actions/workflows/main.yml">
+        <img alt="CI" src="https://github.com/DiscordTime/ggdrive/actions/workflows/main.yml/badge.svg" /></a>
+    <a href="https://www.python.org/">
+        <img alt="PyPI - Python Version" src="https://img.shields.io/pypi/pyversions/ggdrive" /></a>
+    <a href="#">
+        <img alt="Code size" src="https://img.shields.io/github/languages/code-size/DiscordTime/ggdrive" /></a>
+    <a href="https://github.com/DiscordTime/ggdrive/blob/master/LICENSE">
+        <img alt="License" src="https://img.shields.io/pypi/l/ggdrive" /></a>
+    <a href="https://pypi.org/project/ggdrive/">
+        <img alt="Version" src="https://img.shields.io/pypi/v/ggdrive" /></a>
 </p>
 
 # ggdrive
+
 A command-line script for Google Drive, for downloading and uploading files directly from the terminal.
 
 - [Pre-requisites](#pre-requisites)
@@ -30,7 +35,7 @@ The first time you're executing this, a Google page will open and ask for your a
 python3 -m pip install ggdrive
 ```
 
-That's it! You can advance to [How to Use](#how-to-use)
+That's it! You can advance to [Usage](#usage)
 
 ### ... Or install manually
 
