@@ -1,14 +1,55 @@
-# gdrive-manager
+<p align="center">
+    <a href="https://github.com/DiscordTime/ggdrive/actions/workflows/main.yml" alt="CI">
+        <img src="https://github.com/DiscordTime/ggdrive/actions/workflows/main.yml/badge.svg" /></a>
+    <img alt="PyPI - Python Version" src="https://img.shields.io/pypi/pyversions/ggdrive"> 
+    <img alt="Code size" src="https://img.shields.io/github/languages/code-size/DiscordTime/ggdrive">
+    <img alt="License" src="https://img.shields.io/pypi/l/ggdrive">
+    <img alt="Version" src="https://img.shields.io/pypi/v/ggdrive">
+</p>
+
+# ggdrive
 A command-line script for Google Drive, for downloading and uploading files directly from the terminal.
 
-## **How to use**
+- [Pre-requisites](#pre-requisites)
+- [Installation](#installation)
+- [Usage](#usage)
 
-### **1. Pre-requisites**
+## Pre-requisites
 
-### Important note: This project requires Google API credentials. That credential file enables the use of Google APIs by this application, and allows the user to login and allow (or deny) the application to access the user's Google Drive files. At this moment, we're not providing the credentials.json needed for this to work, so if you want to use this code, you need to go to [Google's Developer Console](https://console.developers.google.com/), create a project, and create the OAuth credentials for it. You can download the credentials.json and use it here.
+### Important note: This project requires Google API credentials. That credential file enables the use of Google APIs by this application, and allows the user to login and allow (or deny) the application to access the user's Google Drive files. At this moment, we're not providing the credentials.json needed for this to work, so if you want to use this code, you need to go to [Google's Developer Console](https://console.developers.google.com/), create a project, and create the OAuth credentials for it, allowing for scopes "drive" and "drive.metadata". You can download the credentials.json and use it here.
 
-1. Python 3.6 (at least) 
+After downloading your `credentials.json`, go to to your home folder, create a directory called `.gdrive`, and put your `credentials.json` file in there.
+
+The first time you're executing this, a Google page will open and ask for your account, so it can integrate with your Google Drive account, and then it will ask if you give permission to the app. Once you agree, you're all set.
+
+## Installation
+
+### Install through pip (recommended)
+
+```shell
+python3 -m pip install ggdrive
+```
+
+That's it! You can advance to [How to Use](#how-to-use)
+
+### ... Or install manually
+
+This project requires:
+
+1. Python 3.6 or greater.
 2. Google Client Library
+
+#### 1. Clone this repository
+
+ ```sh
+ git clone git@github.com:DiscordTime/gdrive-manager.git
+ ```
+ or
+ ```sh
+ git clone https://github.com/DiscordTime/gdrive-manager.git
+ ```
+
+#### 2. Install dependencies
 
 We created a `requirements.txt` where you can execute the following to install the needed libs:
 
@@ -20,27 +61,15 @@ or
 python3 -m pip install --upgrade -r requirements.txt
 ```
 
-### **2. Configuring**
-
-1. Clone this repo
-
- ```sh
- git clone git@github.com:DiscordTime/gdrive-manager.git
- ```
- or
- ```sh
- git clone https://github.com/DiscordTime/gdrive-manager.git
- ```
-
- 2. If the script gdrive doesn't have execution permission, give it to it.
+#### 3. If the script gdrive doesn't have execution permission, give it to it.
 
  ```sh
  chmod +x gdrive
  ```
 
- 3. Go to your home folder and create a directory called `.gdrive` and put your `credentials.json` file in there.
+#### 4. Add to PATH environment variable (optional, recommended)
 
- 4. You can add this repo folder to you path, so you can execute gdrive from anywhere on your terminal. Open your `.bashrc` or similar and add one of the following options:
+You can add this repo folder to you path, so you can execute gdrive from anywhere on your terminal. Open your `.bashrc` or similar and add one of the following options:
 
  ```sh
  export PATH=$PATH:'<path-to-repo-folder>'
@@ -50,11 +79,11 @@ or
  alias gdrive='<path-to-repo-folder>/gdrive
  ```
 
-### **3. Usage**
+## Usage
 
 Available functions:
 
-#### 1. Upload
+### 1. Upload
 
 ```sh
 gdrive upload --help
@@ -64,7 +93,7 @@ gdrive upload --help
 gdrive upload <file-to-upload>
 ```
 
-#### 2. Download
+### 2. Download
 ```sh
 gdrive download --help
 ```
@@ -134,7 +163,7 @@ Sample
 }
 ```
 
-#### 3. List
+### 3. List
 ```sh
 gdrive list
 ```
@@ -142,5 +171,3 @@ gdrive list
 ```sh
 gdrive list --help
 ```
-
-The first time you're executing this, a Google page will open and ask for your account, so it can integrate with your Google Drive account, and then it will ask if you give permission to the app. Once you agree, you're all set.
