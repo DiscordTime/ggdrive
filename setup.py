@@ -5,10 +5,10 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name='ggdrive',
-    version='0.1.2',
+    version='0.1.3',
     scripts=['gdrive'],
     author="DiscordTime",
-    description="A Docker and AWS utility package",
+    description="A command-line tool for operating on Google Drive directly from the terminal.",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/DiscordTime/ggdrive",
