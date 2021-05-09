@@ -47,11 +47,11 @@ This project requires:
 #### 1. Clone this repository
 
  ```sh
- git clone git@github.com:DiscordTime/gdrive-manager.git
+ git clone git@github.com:DiscordTime/ggdrive.git
  ```
  or
  ```sh
- git clone https://github.com/DiscordTime/gdrive-manager.git
+ git clone https://github.com/DiscordTime/ggdrive.git
  ```
 
 #### 2. Install dependencies
