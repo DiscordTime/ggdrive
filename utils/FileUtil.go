@@ -1,11 +1,13 @@
-package main
+package utils
 
 import (
-    "fmt"
-    "io"
-    "os"
-    "os/exec"
-    "strings"
+	"errors"
+	"fmt"
+	"io"
+	"mime"
+	"os"
+	"os/exec"
+	"strings"
 )
 
 func GetFile(filename string) (*os.File, error) {
@@ -36,20 +38,35 @@ func ReadFile(filename string, bufferSize int) ([]byte, error) {
     return buffer, nil
 }
 
-func getContentTypeFromOutput(output string) string {
+func getMimeTypeFromExtension(filename string) (string, error) {
+    mimetype := mime.TypeByExtension(filename)
+    if mimetype == "" {
+        return "", errors.New("Could not get MimeType from extension")
+    }
+    return mimetype, nil
+}
+
+func getMimeTypeFromOutput(output string) string {
     splited := strings.Split(output, ":")
     splited2 := strings.Split(splited[1], ";")
     return strings.Trim(splited2[0], " ")
 }
 
-func GetContentType(filename string) (string, error) {
-    cmd := exec.Command("file", "-i", filename)
+func GetMimeType(filename string) (string, error) {
+    file_cmd := "file"
+    bin,err := exec.LookPath(file_cmd)
+    if err != nil {
+        fmt.Println("Could not find command:", file_cmd)
+        return getMimeTypeFromExtension(filename)
+    }
+
+    cmd := exec.Command(bin, "-i", filename)
     out, err := cmd.Output()
     if err != nil {
         fmt.Println("Error executing command")
         return "", err
     }
-    return getContentTypeFromOutput(string(out)), nil
+    return getMimeTypeFromOutput(string(out)), nil
 }
 
 func ToFile(iocloser io.ReadCloser, filename string) error {

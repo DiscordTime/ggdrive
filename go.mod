@@ -1,4 +1,4 @@
-module github.com/discordtime/ggdrive
+module ggdrive
 
 go 1.17
 

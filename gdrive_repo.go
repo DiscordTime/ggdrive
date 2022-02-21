@@ -8,14 +8,13 @@ import (
     "log"
     "net/http"
     "os"
+    "ggdrive/utils" //Consider changing module name to github.com/discordtime/ggdrive
 
     "golang.org/x/oauth2"
     "golang.org/x/oauth2/google"
     "google.golang.org/api/drive/v3"
     "google.golang.org/api/option"
 )
-
-var srv *drive.Service
 
 // Retrieve a token, saves the token, then returns the generated client.
 func getClient(config *oauth2.Config) *http.Client {
@@ -72,12 +71,17 @@ func saveToken(path string, token *oauth2.Token) {
     json.NewEncoder(f).Encode(token)
 }
 
-func ListFiles() {
+func ListFiles() error {
     fmt.Println("List files called")
+    srv,err := Authenticate()
+    if err != nil {
+        return err
+    }
     r, err := srv.Files.List().PageSize(10).
     Fields("nextPageToken, files(id, name)").Do()
     if err != nil {
-        log.Fatalf("Unable to retrieve files: %v", err)
+        fmt.Println("Unable to retrieve files")
+        return err
     }
     fmt.Println("Files:")
     if len(r.Files) == 0 {
@@ -87,17 +91,48 @@ func ListFiles() {
             fmt.Printf("%s (%s)\n", i.Name, i.Id)
         }
     }
+    return nil
+}
+
+func DownloadFile(fileId string) error {
+    fmt.Println("DownloadFile called")
+    srv,err := Authenticate()
+    if err != nil {
+        return err
+    }
+    filename,err := getFileName(srv, fileId)
+    if err != nil {
+        return err
+    }
+
+    fmt.Println("Downloading file:", filename)
+
+    //fileSrv := drive.NewFilesService(srv)
+    res, err := srv.Files.Get(fileId).Context(context.Background()).Download()
+    fmt.Println(res)
+    if err != nil {
+        return err
+    }
+    err = utils.ToFile(res.Body, filename)
+    if err != nil {
+        return err
+    }
+    return nil
 }
 
 func UploadFile(filename string) error {
     fmt.Println("UploadFile called")
-    contentType, err := GetContentType(filename)
+    srv,err := Authenticate()
+    if err != nil {
+        return err
+    }
+    contentType, err := utils.GetMimeType(filename)
     if err != nil {
         fmt.Println("Could not get mimetype of file")
         return err
     }
     fmt.Println("ContentType:", contentType)
-    file,err := GetFile(filename)
+    file,err := utils.GetFile(filename)
     if err != nil {
         return err
     }
@@ -111,19 +146,22 @@ func UploadFile(filename string) error {
     progressFunction := func(now, size int64) {
         fmt.Printf("%d, %d\r", now, size)
     }
-    res,err := srv.Files.Create(f).ProgressUpdater(progressFunction).ResumableMedia(context.Background(), file, fileInfo.Size(), contentType).Do()
+    res,err := srv.Files.Create(f).
+        ProgressUpdater(progressFunction).
+        ResumableMedia(context.Background(), file, fileInfo.Size(), contentType).
+        Do()
     if err != nil {
         fmt.Println("Couldn't upload file")
         return err
     }
-    fmt.Println("Uploaded a total of", res.Size)
+    fmt.Printf("Uploaded file: %s, id: %s\n", res.Name, res.Id)
     return nil
 }
 
-func getFileMetaData(id string) (*drive.File, error) {
+func getFileMetaData(srv *drive.Service, id string) (*drive.File, error) {
     fmt.Println("getFileMetaData called")
     //fields := "id, name, size"
-    file, err := srv.Files.Get(id).Fields("id", "name", "size").Do()
+    file,err := srv.Files.Get(id).Fields("id", "name", "size").Do()
     if err != nil {
         return nil, err
     }
@@ -131,8 +169,8 @@ func getFileMetaData(id string) (*drive.File, error) {
     return file, nil
 }
 
-func getFileName(id string) (string,error) {
-    file,err := getFileMetaData(id)
+func getFileName(srv *drive.Service, id string) (string,error) {
+    file,err := getFileMetaData(srv, id)
     if err != nil {
         fmt.Println("Could not get filename.", err)
         return "",err
@@ -140,48 +178,23 @@ func getFileName(id string) (string,error) {
     return file.Name, nil
 }
 
-func DownloadFile(id string) error {
-    fmt.Println("DownloadFile called")
-    filename,err := getFileName(id)
-    if err != nil {
-        return err
-    }
-
-    fmt.Println("Downloading file:", filename)
-
-    res, err := srv.Files.Get(id).Download()
-    if err != nil {
-        return err
-    }
-    err = ToFile(res.Body, filename)
-    if err != nil {
-        return err
-    }
-    return nil
-}
-
-func Authenticate() error { 
+func Authenticate() (*drive.Service, error) { 
     ctx := context.Background()
     b, err := ioutil.ReadFile("credentials.json")
     if err != nil {
         fmt.Println("Unable to read client secret file: ", err)
-        return err
+        return nil, err
     }
 
     config, err := google.ConfigFromJSON(b, drive.DriveFileScope)
     if err != nil {
         fmt.Println("Unable to parse client secret file to config: ", err)
-        return err
+        return nil, err
     }
     client := getClient(config)
-
-    srv, err = drive.NewService(ctx, option.WithHTTPClient(client))
+    srv,err := drive.NewService(ctx, option.WithHTTPClient(client)) 
     if err != nil {
-        fmt.Println("Unable to retrieve Drive client: ", err)
-        return err
+        fmt.Println("Error while authenticating")
     }
-
-    fmt.Println("Authenticated!")
-    return nil
-
+    return srv,err
 }
