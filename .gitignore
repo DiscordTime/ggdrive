@@ -1,13 +1,2 @@
 credentials.json
-token.pickle
-__pycache__/
-/venv/
-/build/
-/dist/
-/ggdrive.egg-info/
-/.idea/.gitignore
-/.idea/ggdrive.iml
-/.idea/misc.xml
-/.idea/modules.xml
-/.idea/inspectionProfiles/profiles_settings.xml
-/.idea/vcs.xml
+token.json
