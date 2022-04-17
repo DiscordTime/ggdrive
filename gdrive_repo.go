@@ -16,6 +16,22 @@ import (
     "google.golang.org/api/option"
 )
 
+type DriveRepository interface {
+    ListFiles() error
+    DownloadFile(string) error
+    UploadFile(string) error
+}
+
+type GDriveRepository struct {
+    logger utils.Logger
+}
+
+func NewDriveRepository(logr utils.Logger) DriveRepository {
+    gDriveRepository := GDriveRepository{}
+    gDriveRepository.logger = logr
+    return gDriveRepository
+}
+
 // Retrieve a token, saves the token, then returns the generated client.
 func getClient(config *oauth2.Config) *http.Client {
     // The file token.json stores the user's access and refresh tokens, and is
@@ -71,22 +87,22 @@ func saveToken(path string, token *oauth2.Token) {
     json.NewEncoder(f).Encode(token)
 }
 
-func ListFiles() error {
-    fmt.Println("List files called")
-    srv,err := Authenticate()
+func (drv GDriveRepository) ListFiles() error {
+    drv.logger.LogD("GDriveRepository", "List files called")
+    srv, err := authenticate()
     if err != nil {
         return err
     }
     r, err := srv.Files.List().PageSize(10).
     Fields("nextPageToken, files(id, name)").Do()
     if err != nil {
-        fmt.Println("Unable to retrieve files")
+        drv.logger.LogD("GDriveRepository", "Unable to retrieve files")
         return err
     }
-    fmt.Println("Files:")
     if len(r.Files) == 0 {
         fmt.Println("No files found.")
     } else {
+        fmt.Println("Files:")
         for _, i := range r.Files {
             fmt.Printf("%s (%s)\n", i.Name, i.Id)
         }
@@ -94,9 +110,9 @@ func ListFiles() error {
     return nil
 }
 
-func DownloadFile(fileId string) error {
-    fmt.Println("DownloadFile called")
-    srv,err := Authenticate()
+func (drv GDriveRepository) DownloadFile(fileId string) error {
+    drv.logger.LogD("GDriveRepository", "DownloadFile called")
+    srv,err := authenticate()
     if err != nil {
         return err
     }
@@ -120,23 +136,27 @@ func DownloadFile(fileId string) error {
     return nil
 }
 
-func UploadFile(filename string) error {
-    fmt.Println("UploadFile called")
-    srv,err := Authenticate()
+func (drv GDriveRepository) UploadFile(filename string) error {
+    drv.logger.LogD("GDriveRepository", "UploadFile called")
+
+    srv, err := authenticate()
     if err != nil {
         return err
     }
+
     contentType, err := utils.GetMimeType(filename)
     if err != nil {
-        fmt.Println("Could not get mimetype of file")
+        drv.logger.LogD("GDriveRepository", "Could not get mimetype of file: ", filename)
         return err
     }
-    fmt.Println("ContentType:", contentType)
-    file,err := utils.GetFile(filename)
+    drv.logger.LogD("GDriveRepository", "ContentType:", contentType)
+
+    file, err := utils.GetFile(filename)
     if err != nil {
         return err
     }
-    fileInfo,err := file.Stat()
+
+    fileInfo, err := file.Stat()
     if err != nil {
         return err
     }
@@ -146,10 +166,12 @@ func UploadFile(filename string) error {
     progressFunction := func(now, size int64) {
         fmt.Printf("%d, %d\r", now, size)
     }
-    res,err := srv.Files.Create(f).
+
+    res, err := srv.Files.Create(f).
         ProgressUpdater(progressFunction).
         ResumableMedia(context.Background(), file, fileInfo.Size(), contentType).
         Do()
+
     if err != nil {
         fmt.Println("Couldn't upload file")
         return err
@@ -163,6 +185,7 @@ func getFileMetaData(srv *drive.Service, id string) (*drive.File, error) {
     //fields := "id, name, size"
     file,err := srv.Files.Get(id).Fields("id", "name", "size").Do()
     if err != nil {
+        fmt.Printf("Could not get file metadata for id %s\n", id)
         return nil, err
     }
     fmt.Println("filename:", file.Name)
@@ -178,7 +201,7 @@ func getFileName(srv *drive.Service, id string) (string,error) {
     return file.Name, nil
 }
 
-func Authenticate() (*drive.Service, error) { 
+func authenticate() (*drive.Service, error) {
     ctx := context.Background()
     b, err := ioutil.ReadFile("credentials.json")
     if err != nil {
@@ -188,13 +211,13 @@ func Authenticate() (*drive.Service, error) {
 
     config, err := google.ConfigFromJSON(b, drive.DriveFileScope)
     if err != nil {
-        fmt.Println("Unable to parse client secret file to config: ", err)
+        //fmt.Println("Unable to parse client secret file to config: ", err)
         return nil, err
     }
     client := getClient(config)
     srv,err := drive.NewService(ctx, option.WithHTTPClient(client)) 
     if err != nil {
-        fmt.Println("Error while authenticating")
+        //fmt.Println("Error while authenticating")
     }
     return srv,err
 }
