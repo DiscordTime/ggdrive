@@ -79,6 +79,7 @@ func ToFile(iocloser io.ReadCloser, filename string) error {
     if err != nil {
         return err
     }
+
     return nil
 }
 

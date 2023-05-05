@@ -2,99 +2,31 @@ package main
 
 import (
     "context"
-    "encoding/json"
     "fmt"
-    "io/ioutil"
-    "log"
-    "net/http"
-    "os"
     "ggdrive/utils" //Consider changing module name to github.com/discordtime/ggdrive
-
-    "golang.org/x/oauth2"
-    "golang.org/x/oauth2/google"
-    "google.golang.org/api/drive/v3"
-    "google.golang.org/api/option"
 )
 
 type DriveRepository interface {
-    ListFiles() error
-    DownloadFile(string) error
-    UploadFile(string) error
+    ListFiles(context.Context) error
+    DownloadFile(context.Context, string) error
+    UploadFile(context.Context, string) error
 }
 
 type GDriveRepository struct {
+    srv *GdriveService
     logger utils.Logger
 }
 
-func NewDriveRepository(logr utils.Logger) DriveRepository {
-    gDriveRepository := GDriveRepository{}
-    gDriveRepository.logger = logr
-    return gDriveRepository
+func NewDriveRepository(gSrv *GdriveService, logger utils.Logger) DriveRepository {
+    return GDriveRepository{
+        srv: gSrv,
+        logger: logger,
+    }
 }
 
-// Retrieve a token, saves the token, then returns the generated client.
-func getClient(config *oauth2.Config) *http.Client {
-    // The file token.json stores the user's access and refresh tokens, and is
-    // created automatically when the authorization flow completes for the first
-    // time.
-    tokFile := "token.json"
-    tok, err := tokenFromFile(tokFile)
-    if err != nil {
-        tok = getTokenFromWeb(config)
-        saveToken(tokFile, tok)
-    }
-    return config.Client(context.Background(), tok)
-}
-
-// Request a token from the web, then returns the retrieved token.
-func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
-    authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
-    fmt.Printf("Go to the following link in your browser then type the "+
-    "authorization code: \n%v\n", authURL)
-
-    var authCode string
-    if _, err := fmt.Scan(&authCode); err != nil {
-        log.Fatalf("Unable to read authorization code %v", err)
-    }
-
-    tok, err := config.Exchange(context.TODO(), authCode)
-    if err != nil {
-        log.Fatalf("Unable to retrieve token from web %v", err)
-    }
-    return tok
-}
-
-// Retrieves a token from a local file.
-func tokenFromFile(file string) (*oauth2.Token, error) {
-    f, err := os.Open(file)
-    if err != nil {
-        return nil, err
-    }
-    defer f.Close()
-    tok := &oauth2.Token{}
-    err = json.NewDecoder(f).Decode(tok)
-    return tok, err
-}
-
-// Saves a token to a file path.
-func saveToken(path string, token *oauth2.Token) {
-    fmt.Printf("Saving credential file to: %s\n", path)
-    f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
-    if err != nil {
-        log.Fatalf("Unable to cache oauth token: %v", err)
-    }
-    defer f.Close()
-    json.NewEncoder(f).Encode(token)
-}
-
-func (drv GDriveRepository) ListFiles() error {
+func (drv GDriveRepository) ListFiles(ctx context.Context) error {
     drv.logger.LogD("GDriveRepository", "List files called")
-    srv, err := authenticate()
-    if err != nil {
-        return err
-    }
-    r, err := srv.Files.List().PageSize(10).
-    Fields("nextPageToken, files(id, name)").Do()
+    r, err := drv.srv.ListFiles(10)
     if err != nil {
         drv.logger.LogD("GDriveRepository", "Unable to retrieve files")
         return err
@@ -110,114 +42,14 @@ func (drv GDriveRepository) ListFiles() error {
     return nil
 }
 
-func (drv GDriveRepository) DownloadFile(fileId string) error {
+func (drv GDriveRepository) DownloadFile(ctx context.Context, fileId string) error {
     drv.logger.LogD("GDriveRepository", "DownloadFile called")
-    srv,err := authenticate()
-    if err != nil {
-        return err
-    }
-    filename,err := getFileName(srv, fileId)
-    if err != nil {
-        return err
-    }
-
-    fmt.Println("Downloading file:", filename)
-
-    //fileSrv := drive.NewFilesService(srv)
-    res, err := srv.Files.Get(fileId).Context(context.Background()).Download()
-    fmt.Println(res)
-    if err != nil {
-        return err
-    }
-    err = utils.ToFile(res.Body, filename)
-    if err != nil {
-        return err
-    }
-    return nil
+    return drv.srv.DownloadFile(ctx, fileId)
 }
 
-func (drv GDriveRepository) UploadFile(filename string) error {
+func (drv GDriveRepository) UploadFile(ctx context.Context, filename string) error {
     drv.logger.LogD("GDriveRepository", "UploadFile called")
+    return drv.UploadFile(ctx, filename)
 
-    srv, err := authenticate()
-    if err != nil {
-        return err
-    }
-
-    contentType, err := utils.GetMimeType(filename)
-    if err != nil {
-        drv.logger.LogD("GDriveRepository", "Could not get mimetype of file: ", filename)
-        return err
-    }
-    drv.logger.LogD("GDriveRepository", "ContentType:", contentType)
-
-    file, err := utils.GetFile(filename)
-    if err != nil {
-        return err
-    }
-
-    fileInfo, err := file.Stat()
-    if err != nil {
-        return err
-    }
-    defer file.Close()
- 
-    f := &drive.File{Name: filename, MimeType: contentType}
-    progressFunction := func(now, size int64) {
-        fmt.Printf("%d, %d\r", now, size)
-    }
-
-    res, err := srv.Files.Create(f).
-        ProgressUpdater(progressFunction).
-        ResumableMedia(context.Background(), file, fileInfo.Size(), contentType).
-        Do()
-
-    if err != nil {
-        fmt.Println("Couldn't upload file")
-        return err
-    }
-    fmt.Printf("Uploaded file: %s, id: %s\n", res.Name, res.Id)
-    return nil
 }
 
-func getFileMetaData(srv *drive.Service, id string) (*drive.File, error) {
-    fmt.Println("getFileMetaData called")
-    //fields := "id, name, size"
-    file,err := srv.Files.Get(id).Fields("id", "name", "size").Do()
-    if err != nil {
-        fmt.Printf("Could not get file metadata for id %s\n", id)
-        return nil, err
-    }
-    fmt.Println("filename:", file.Name)
-    return file, nil
-}
-
-func getFileName(srv *drive.Service, id string) (string,error) {
-    file,err := getFileMetaData(srv, id)
-    if err != nil {
-        fmt.Println("Could not get filename.", err)
-        return "",err
-    }
-    return file.Name, nil
-}
-
-func authenticate() (*drive.Service, error) {
-    ctx := context.Background()
-    b, err := ioutil.ReadFile("credentials.json")
-    if err != nil {
-        fmt.Println("Unable to read client secret file: ", err)
-        return nil, err
-    }
-
-    config, err := google.ConfigFromJSON(b, drive.DriveFileScope)
-    if err != nil {
-        //fmt.Println("Unable to parse client secret file to config: ", err)
-        return nil, err
-    }
-    client := getClient(config)
-    srv,err := drive.NewService(ctx, option.WithHTTPClient(client)) 
-    if err != nil {
-        //fmt.Println("Error while authenticating")
-    }
-    return srv,err
-}
